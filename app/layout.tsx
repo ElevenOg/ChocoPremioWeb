@@ -16,12 +16,23 @@ export const metadata: Metadata = {
   title: "ChocoPremio",
   description: "Juega, rompe el chocolate y descubre tu premio con ChocoPremio",
 
-  // 🍫 FAVICONS COMPLETOS
   icons: {
     icon: [
-      { url: "/favicons/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-      { url: "/favicons/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/favicons/favicon-96x96.png", sizes: "96x96", type: "image/png" },
+      {
+        url: "/favicons/favicon-32x32.png",
+        sizes: "32x32",
+        type: "image/png",
+      },
+      {
+        url: "/favicons/favicon-16x16.png",
+        sizes: "16x16",
+        type: "image/png",
+      },
+      {
+        url: "/favicons/favicon-96x96.png",
+        sizes: "96x96",
+        type: "image/png",
+      },
     ],
     shortcut: "/favicons/favicon.ico",
     apple: "/favicons/apple-icon-180x180.png",
@@ -48,9 +59,9 @@ export default function RootLayout({
       <body
         className="min-h-full flex flex-col"
         style={{
-          overflow: "hidden",
+          overflowX: "hidden",
+          overflowY: "auto",
           touchAction: "manipulation",
-          overscrollBehavior: "none",
         }}
       >
         {children}
