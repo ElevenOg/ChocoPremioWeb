@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabase";
@@ -16,6 +16,16 @@ export default function DashboardLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [showCard, setShowCard] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowCard(true);
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleLogin = async () => {
     setError("");
     setLoading(true);
@@ -27,7 +37,7 @@ export default function DashboardLogin() {
         .eq("username", username)
         .eq("password", password)
         .eq("active", true)
-        .maybeSingle(); // 🔥 FIX IMPORTANTE
+        .maybeSingle();
 
       if (error || !data) {
         setError("Usuario o contraseña incorrectos");
@@ -56,6 +66,7 @@ export default function DashboardLogin() {
     <main
       className="
         min-h-screen
+        overflow-hidden
         flex
         items-center
         justify-center
@@ -109,10 +120,27 @@ export default function DashboardLogin() {
           textAlign: "center",
           boxShadow: "0 25px 70px rgba(0,0,0,0.25)",
           position: "relative",
-          zIndex: 5
+          zIndex: 5,
+
+          opacity: showCard ? 1 : 0,
+          transform: showCard
+            ? "translateY(0px) scale(1)"
+            : "translateY(40px) scale(0.95)",
+
+          transition:
+            "opacity 0.8s ease, transform 0.8s cubic-bezier(0.22,1,0.36,1)"
         }}
       >
-        <div style={{ fontSize: "clamp(60px,12vw,80px)" }}>
+        <div
+          style={{
+            fontSize: "clamp(60px,12vw,80px)",
+            marginTop: "20px",
+            transform: showCard ? "translateY(0)" : "translateY(-15px)",
+            opacity: showCard ? 1 : 0,
+            transition:
+              "all 1s cubic-bezier(0.22,1,0.36,1) 0.2s"
+          }}
+        >
           🍫
         </div>
 
