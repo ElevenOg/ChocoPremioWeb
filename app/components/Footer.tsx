@@ -56,31 +56,33 @@ export default function Footer() {
           </ul>
         </div>
 
-        {/* LEGAL */}
+        {/* DASHBOARD */}
         <div>
           <h3 className="mb-4 text-lg font-semibold text-white">
-            Legal
+            Comercios
           </h3>
 
-          <ul className="space-y-2 text-sm">
-            <li>
-              <Link
-                href="/terminos"
-                className="text-[#f3e6c8] transition hover:text-white"
-              >
-                Términos y Condiciones
-              </Link>
-            </li>
-
-            <li>
-              <Link
-                href="/privacidad"
-                className="text-[#f3e6c8] transition hover:text-white"
-              >
-                Política de Privacidad
-              </Link>
-            </li>
-          </ul>
+          <Link
+            href="/dashboard/login"
+            className="
+              inline-flex
+              items-center
+              justify-center
+              rounded-xl
+              bg-white
+              px-5
+              py-2.5
+              font-bold
+              text-[#4d3800]
+              shadow-md
+              transition-all
+              duration-200
+              hover:scale-105
+              hover:bg-[#f8f1e3]
+            "
+          >
+            Dashboard
+          </Link>
         </div>
 
         {/* CONTACTO */}

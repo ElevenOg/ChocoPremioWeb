@@ -966,8 +966,7 @@ if (!commerce) return <div>No hay comercio activo</div>;
   position: "relative",
   overflow: "hidden",
 
-  background:
-    "radial-gradient(circle at top,#fffdf6 0%,#fff6e4 35%,#fdeccf 60%,#f6ddb1 100%)",
+  background: "radial-gradient(circle at top,#fffdf6 0%,#fff6e4 35%,#fdeccf 60%,#f6ddb1 100%)",
 
   backgroundAttachment: "fixed",
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabase";
@@ -23,24 +23,38 @@ export default function DashboardLogin() {
       setShowCard(true);
     }, 50);
 
-    return () => clearTimeout(timer);
-  }, []);
+    router.prefetch("/dashboard");
 
-  const handleLogin = async () => {
+    return () => clearTimeout(timer);
+  }, [router]);
+
+  const handleLogin = useCallback(async () => {
+    if (loading) return;
+
+    const cleanUsername = username.trim();
+    const cleanPassword = password.trim();
+
     setError("");
+
+    if (!cleanUsername || !cleanPassword) {
+      setError("Completa todos los campos");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const { data, error } = await supabase
         .from("commerces")
         .select("*")
-        .eq("username", username)
-        .eq("password", password)
+        .eq("username", cleanUsername)
+        .eq("password", cleanPassword)
         .eq("active", true)
-        .maybeSingle();
+        .single();
 
       if (error || !data) {
         setError("Usuario o contraseña incorrectos");
+        setLoading(false);
         return;
       }
 
@@ -49,12 +63,20 @@ export default function DashboardLogin() {
         JSON.stringify(data)
       );
 
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (err) {
       console.error(err);
+
       setError("Error al iniciar sesión");
-    } finally {
       setLoading(false);
+    }
+  }, [username, password, loading, router]);
+
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (e.key === "Enter") {
+      handleLogin();
     }
   };
 
@@ -86,7 +108,7 @@ export default function DashboardLogin() {
           style={{
             width: "100%",
             height: "clamp(130px,22vh,240px)",
-            filter: "drop-shadow(0 12px 25px rgba(0,0,0,0.25))"
+            filter: "drop-shadow(0 12px 25px rgba(0,0,0,0.25))",
           }}
         >
           <path
@@ -128,17 +150,19 @@ export default function DashboardLogin() {
             : "translateY(40px) scale(0.95)",
 
           transition:
-            "opacity 0.8s ease, transform 0.8s cubic-bezier(0.22,1,0.36,1)"
+            "opacity .8s ease, transform .8s cubic-bezier(0.22,1,0.36,1)",
         }}
       >
         <div
           style={{
             fontSize: "clamp(60px,12vw,80px)",
             marginTop: "20px",
-            transform: showCard ? "translateY(0)" : "translateY(-15px)",
+            transform: showCard
+              ? "translateY(0)"
+              : "translateY(-15px)",
             opacity: showCard ? 1 : 0,
             transition:
-              "all 1s cubic-bezier(0.22,1,0.36,1) 0.2s"
+              "all 1s cubic-bezier(0.22,1,0.36,1) .2s",
           }}
         >
           🍫
@@ -149,7 +173,7 @@ export default function DashboardLogin() {
             fontSize: "clamp(22px,5vw,28px)",
             fontWeight: 900,
             color: "#4d3800",
-            marginTop: "10px"
+            marginTop: "10px",
           }}
         >
           PANEL CHOCOPREMIO
@@ -159,7 +183,7 @@ export default function DashboardLogin() {
           style={{
             marginTop: "10px",
             color: "#555",
-            fontSize: "15px"
+            fontSize: "15px",
           }}
         >
           Ingresa a tu panel de estadísticas
@@ -168,8 +192,10 @@ export default function DashboardLogin() {
         <input
           type="text"
           placeholder="Usuario"
+          autoComplete="username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
+          onKeyDown={handleKeyDown}
           style={{
             width: "100%",
             marginTop: "25px",
@@ -177,15 +203,17 @@ export default function DashboardLogin() {
             borderRadius: "15px",
             border: "2px solid #4d3800",
             outline: "none",
-            fontSize: "16px"
+            fontSize: "16px",
           }}
         />
 
         <input
           type="password"
           placeholder="Contraseña"
+          autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={handleKeyDown}
           style={{
             width: "100%",
             marginTop: "12px",
@@ -193,7 +221,7 @@ export default function DashboardLogin() {
             borderRadius: "15px",
             border: "2px solid #4d3800",
             outline: "none",
-            fontSize: "16px"
+            fontSize: "16px",
           }}
         />
 
@@ -203,7 +231,7 @@ export default function DashboardLogin() {
               marginTop: "12px",
               color: "#4d3800",
               fontSize: "14px",
-              fontWeight: 700
+              fontWeight: 700,
             }}
           >
             {error}
@@ -212,6 +240,7 @@ export default function DashboardLogin() {
 
         <button
           onClick={handleLogin}
+          disabled={loading}
           style={{
             width: "100%",
             marginTop: "20px",
@@ -222,7 +251,25 @@ export default function DashboardLogin() {
             color: "#fff",
             fontSize: "17px",
             fontWeight: 900,
-            cursor: "pointer"
+            cursor: loading ? "wait" : "pointer",
+            opacity: loading ? 0.85 : 1,
+            transition:
+              "transform .12s ease, opacity .12s ease",
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.transform = "scale(0.97)";
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.transform = "scale(1)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "scale(1)";
+          }}
+          onTouchStart={(e) => {
+            e.currentTarget.style.transform = "scale(0.97)";
+          }}
+          onTouchEnd={(e) => {
+            e.currentTarget.style.transform = "scale(1)";
           }}
         >
           INGRESAR
@@ -232,7 +279,7 @@ export default function DashboardLogin() {
           style={{
             marginTop: "15px",
             fontSize: "13px",
-            color: "#777"
+            color: "#777",
           }}
         >
           Acceso exclusivo para comercios afiliados
