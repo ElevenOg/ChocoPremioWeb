@@ -33,7 +33,7 @@ export default function Home() {
     style={{
       width: "100%",
       height: "clamp(130px, 22vh, 240px)",
-      filter: "drop-shadow(0 12px 25px rgba(0,0,0,0.25))"
+      filter: "none"
     }}
   >
     <path
