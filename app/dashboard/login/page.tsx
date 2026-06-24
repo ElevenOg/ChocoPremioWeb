@@ -65,7 +65,7 @@ export default function DashboardLogin() {
   return (
     <main
       className="
-        h-screen
+        h-dvh
         overflow-hidden
         flex
         items-center
