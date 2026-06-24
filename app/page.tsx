@@ -12,22 +12,7 @@ export default function Home() {
 
   const router = useRouter();
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-
-  useEffect(() => {
-    audioRef.current = new Audio("/sounds/click.mp3");
-    audioRef.current.volume = 0.45;
-    audioRef.current.load();
-  }, []);
-
-  const playClick = () => {
-    if (!audioRef.current) return;
-
-    audioRef.current.currentTime = 0;
-    audioRef.current.play().catch(() => {});
-  };
 
   return (
     <main
@@ -79,7 +64,6 @@ export default function Home() {
 
           <div
             onClick={() => {
-              playClick?.();
               router.push("/dashboard/login");
            }}
            className="mt-5 text-6xl md:text-7xl cursor-pointer select-none transition-transform hover:scale-110 active:scale-95"
@@ -100,7 +84,6 @@ export default function Home() {
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <a
               href="#Comofunciona"
-              onClick={playClick}
               className="rounded-full bg-[#4d3800] px-6 py-3 text-sm font-bold text-white transition hover:scale-105"
             >
               Cómo funciona
@@ -108,7 +91,6 @@ export default function Home() {
 
             <a
               href="#premios"
-              onClick={playClick}
               className="rounded-full border border-gray-300 bg-white px-6 py-3 text-sm font-bold transition hover:scale-105"
             >
               Premios
