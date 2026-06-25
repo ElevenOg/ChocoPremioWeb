@@ -313,48 +313,29 @@ export default function Intro() {
 
     const socialUrl = commerce.social_url;
 
-    const cleanInstagram = socialUrl
-      .replace("https://instagram.com/", "")
-      .replace("https://www.instagram.com/", "")
-      .replaceAll("/", "");
-
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     if (isMobile) {
-      let fallbackFired = false;
-      let cancelled = false;
-
-      const cancelFallback = () => {
-        cancelled = true;
-      };
-
-      // Si la pestaña pierde el foco o se oculta, significa que
-      // el celular SÍ logró abrir la app de Instagram.
-      // En ese caso cancelamos el fallback para que, al volver
-      // a la pestaña, no se vuelva a redirigir.
-      window.addEventListener("blur", cancelFallback, { once: true });
-      document.addEventListener(
-        "visibilitychange",
-        () => {
-          if (document.hidden) cancelFallback();
-        },
-        { once: true }
-      );
-
-      // Redirección inmediata al deep link de la app
-      window.location.href = `instagram://user?username=${cleanInstagram}`;
-
-      // Fallback: solo se ejecuta si la pestaña SIGUE visible
-      // tras 800ms, es decir, si Instagram no estaba instalado
-      // y el deep link no abrió ninguna app.
-      window.setTimeout(() => {
-        window.removeEventListener("blur", cancelFallback);
-
-        if (!cancelled && !fallbackFired && !document.hidden) {
-          fallbackFired = true;
-          window.location.href = socialUrl;
-        }
-      }, 800);
+      /**
+       * Usamos el LINK UNIVERSAL de Instagram
+       * (https://instagram.com/usuario), NO el esquema
+       * personalizado (instagram://).
+       *
+       * Por qué: los links universales (Universal Links en iOS,
+       * App Links en Android) los resuelve el propio sistema
+       * operativo de forma nativa, UNA sola vez:
+       * - Si Instagram está instalado, el SO intercepta la
+       *   navegación https y abre la app directamente.
+       * - Si no está instalado, el navegador simplemente
+       *   sigue normal a la página web de Instagram.
+       *
+       * Esto evita por completo el problema de "doble redirección"
+       * que ocurre con esquemas personalizados (instagram://)
+       * combinados con timeouts de fallback, porque ya no hay
+       * que adivinar si la app abrió o no — lo decide el sistema
+       * antes de que JavaScript tenga que hacer nada extra.
+       */
+      window.location.href = socialUrl;
     } else {
       window.open(socialUrl, "_blank");
     }
