@@ -30,6 +30,12 @@ import {
   preloadSounds
 } from "../components/AudioManager";
 
+interface Commerce {
+  id: string;
+  slug: string;
+  social_url: string | null;
+}
+
 export default function Intro() {
 
   /**
@@ -51,18 +57,14 @@ export default function Intro() {
   const [loading, setLoading] = useState<boolean>(true);
 
   // Datos del comercio cargados desde Supabase
-  const [commerce, setCommerce] = useState<any>(null);
+  const [commerce, setCommerce] =
+  useState<Commerce | null>(null);
 
   /**
    * Guarda la sesión creada en game_sessions
    * para luego actualizar estadísticas
    */
   const [sessionId, setSessionId] = useState<string | null>(null);
-
-  /**
-   * Guarda la campaña activa del comercio
-   */
-  const [campaignId, setCampaignId] = useState<string | null>(null);
 
   /**
    * Evita doble click en jugar
@@ -73,7 +75,16 @@ export default function Intro() {
   const router = useRouter();
 
   // Parámetros dinámicos de la URL
-  const params = useParams();
+  const params = useParams<{ slug: string }>();
+
+  // Prefetch de la página del juego
+  useEffect(() => {
+  const slug = params?.slug;
+
+  if (!slug) return;
+
+  router.prefetch(`/${slug}/game`);
+}, [router, params?.slug]);
 
   // Referencia para el scroll interno del modal
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -153,13 +164,6 @@ export default function Intro() {
         .eq("commerce_id", data.id)
         .eq("active", true)
         .single();
-
-      /**
-       * Guarda ID de campaña activa
-       */
-      if (activeCampaign) {
-        setCampaignId(activeCampaign.id);
-      }
 
       /**
        * SESSION PERSISTENTE:

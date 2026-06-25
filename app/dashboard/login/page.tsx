@@ -63,7 +63,10 @@ export default function DashboardLogin() {
         JSON.stringify(data)
       );
 
-      router.replace("/dashboard");
+      requestAnimationFrame(() => {
+         router.replace("/dashboard");
+    });
+
     } catch (err) {
       console.error(err);
 

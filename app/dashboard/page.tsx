@@ -58,7 +58,7 @@ export default function DashboardPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
   const [sessions, setSessions] = useState<GameSession[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -101,7 +101,7 @@ export default function DashboardPage() {
   if (!commerce?.id || !selectedCampaign) return;
 
   const load = async () => {
-    setLoading(true);
+    setLoadingStats(true);
 
     const pageSize = 1000;
     let from = 0;
@@ -132,7 +132,7 @@ export default function DashboardPage() {
     console.log("TOTAL SESIONES CARGADAS:", all.length);
 
     setSessions(all);
-    setLoading(false);
+    setLoadingStats(false);
   };
 
   load();
@@ -276,7 +276,7 @@ const historyCampaigns = useMemo(() => {
     .slice(0, 2);
 }, [campaigns]);
 
-if (!hydrated || loading) return <ChocolateLoader />;
+if (!hydrated) return <ChocolateLoader />;
 if (!commerce) return <div>No hay comercio activo</div>;
 
   /* ───────── RENDER ───────── */
