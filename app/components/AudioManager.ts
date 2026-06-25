@@ -1,13 +1,27 @@
 /**
  * AudioManager
  *
- * Reescrito con Web Audio API para:
- * - reproducción instantánea (sin latencia de HTMLAudioElement)
- * - sin "doble sonido" por colisión de pool
- * - sin delay tras tiempo de inactividad
- * - menor consumo (un solo buffer decodificado por sonido)
- * - Android / iPhone / Safari / Chrome
- * - reproducción simultánea ilimitada y segura
+ * Web Audio API como motor principal (sin "doble sonido",
+ * reproducción simultánea nativa, sin rebobinado) CON un
+ * fallback automático a HTMLAudioElement mientras el buffer
+ * todavía no está decodificado.
+ *
+ * Por qué el fallback es necesario:
+ * Safari/iOS exige que AudioContext.resume() y la primera
+ * reproducción ocurran dentro de la "ventana" de un gesto de
+ * usuario síncrono. Si el usuario hace click ANTES de que
+ * fetch() + decodeAudioData() terminen (lo cual es async y
+ * puede tardar más en redes móviles), Safari descarta la
+ * reproducción en silencio. El fallback con HTMLAudioElement
+ * no tiene ese problema porque no depende de decodificación
+ * async en el momento exacto del click, así que garantiza que
+ * SIEMPRE se escuche algo desde el primer click, incluso si
+ * el buffer de Web Audio aún no está listo.
+ *
+ * Una vez que el buffer ya decodificó (normalmente en
+ * cuestión de milisegundos a un par de segundos), todas las
+ * reproducciones siguientes usan Web Audio API de forma
+ * normal, con todas sus ventajas.
  */
 
 type SoundName =
@@ -45,29 +59,79 @@ const SOUND_CONFIG: Record<SoundName, SoundConfig> = {
 
 /**
  * Contexto de audio único (singleton).
- * Se crea de forma "lazy" porque Safari/iOS
- * exige que se cree o reanude tras un gesto del usuario.
  */
 let audioContext: AudioContext | null = null;
 
 /**
  * Buffers ya decodificados, uno por sonido.
- * Se decodifican una sola vez y se reutilizan
- * en cada reproducción (sin volver a descargar/decodificar).
  */
 const audioBuffers = new Map<SoundName, AudioBuffer>();
 
 /**
- * Sonidos que ya están en proceso de carga,
- * para no disparar fetch duplicados si playSound
- * se llama antes de que termine preloadSounds.
+ * Promesas de carga en curso (evita fetch duplicados).
  */
 const loadingPromises = new Map<SoundName, Promise<AudioBuffer | null>>();
 
 /**
- * Nodo maestro de volumen (opcional, útil para mute global).
+ * Nodo maestro de volumen.
  */
 let masterGain: GainNode | null = null;
+
+/**
+ * FALLBACK: elementos HTMLAudioElement listos para reproducir
+ * de inmediato mientras el buffer de Web Audio no esté decodificado.
+ * Se crean siempre, en paralelo a la carga de Web Audio,
+ * porque son baratos y garantizan sonido instantáneo.
+ */
+const fallbackElements = new Map<SoundName, HTMLAudioElement>();
+
+function createFallbackElement(sound: SoundName): HTMLAudioElement {
+  const config = SOUND_CONFIG[sound];
+
+  const audio = new Audio(config.src);
+  audio.preload = "auto";
+  audio.volume = config.volume;
+  audio.setAttribute("playsinline", "true");
+  audio.setAttribute("webkit-playsinline", "true");
+  audio.load();
+
+  return audio;
+}
+
+function getFallbackElement(sound: SoundName): HTMLAudioElement {
+  let audio = fallbackElements.get(sound);
+
+  if (!audio) {
+    audio = createFallbackElement(sound);
+    fallbackElements.set(sound, audio);
+  }
+
+  return audio;
+}
+
+/**
+ * Reproduce usando el fallback de HTMLAudioElement.
+ * Se clona el nodo para permitir reproducción simultánea
+ * sin cortar la instancia anterior (mismo patrón que ya
+ * te funcionaba en producción).
+ */
+function playFallback(sound: SoundName, volumeOverride?: number) {
+  try {
+    const original = getFallbackElement(sound);
+
+    const clone = original.cloneNode(true) as HTMLAudioElement;
+    clone.volume = volumeOverride ?? SOUND_CONFIG[sound].volume;
+    clone.currentTime = 0;
+
+    const playPromise = clone.play();
+
+    if (playPromise) {
+      playPromise.catch(() => {});
+    }
+  } catch {
+    // Reproducción silenciosamente ignorada si algo falla.
+  }
+}
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") {
@@ -90,8 +154,6 @@ function getAudioContext(): AudioContext | null {
     masterGain.connect(audioContext.destination);
   }
 
-  // Safari/iOS suspende el contexto hasta el primer gesto del usuario.
-  // Lo reanudamos cada vez que intentamos usarlo, sin costo si ya está activo.
   if (audioContext.state === "suspended") {
     audioContext.resume().catch(() => {});
   }
@@ -101,7 +163,6 @@ function getAudioContext(): AudioContext | null {
 
 /**
  * Descarga y decodifica un sonido a AudioBuffer.
- * Si ya existe o ya se está cargando, reutiliza esa promesa.
  */
 function loadSound(sound: SoundName): Promise<AudioBuffer | null> {
   const existing = audioBuffers.get(sound);
@@ -141,9 +202,11 @@ function loadSound(sound: SoundName): Promise<AudioBuffer | null> {
 /**
  * Precargar todos los sonidos.
  *
- * Llamar una sola vez, idealmente tras el primer
- * gesto del usuario (click/tap) para cumplir con las
- * políticas de autoplay de Safari/iOS y Chrome.
+ * Llamar en el primer gesto del usuario (click/tap).
+ * Crea el AudioContext, lanza la decodificación de los
+ * buffers de Web Audio EN PARALELO, y además prepara los
+ * elementos de fallback (HTMLAudioElement) que están listos
+ * de inmediato, sin esperar nada async.
  */
 export function preloadSounds(): void {
   if (typeof window === "undefined") {
@@ -154,6 +217,10 @@ export function preloadSounds(): void {
   getAudioContext();
 
   (Object.keys(SOUND_CONFIG) as SoundName[]).forEach((sound) => {
+    // Fallback: instantáneo, sin esperar nada.
+    getFallbackElement(sound);
+
+    // Web Audio: se decodifica en segundo plano.
     void loadSound(sound);
   });
 }
@@ -161,67 +228,61 @@ export function preloadSounds(): void {
 /**
  * Reproducir sonido.
  *
- * Cada llamada crea su propio AudioBufferSourceNode
- * de un solo uso: no hay pool, no hay colisión,
- * no hay "doble sonido", y la reproducción simultánea
- * (varios clicks rápidos) es nativa y segura.
+ * Si el buffer de Web Audio ya está decodificado, lo usa
+ * (mejor rendimiento, sin colisiones). Si todavía NO está
+ * listo (lo más común en el primer click en móvil), usa el
+ * fallback de HTMLAudioElement para garantizar que se
+ * escuche algo de inmediato, sin silencios.
  */
 export function playSound(sound: SoundName, volumeOverride?: number): void {
   if (typeof window === "undefined") {
     return;
   }
 
-  const ctx = getAudioContext();
-  if (!ctx || !masterGain) {
-    return;
-  }
-
-  const config = SOUND_CONFIG[sound];
   const existingBuffer = audioBuffers.get(sound);
 
-  const play = (buffer: AudioBuffer) => {
-    try {
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-
-      const gainNode = ctx.createGain();
-      gainNode.gain.value = volumeOverride ?? config.volume;
-
-      source.connect(gainNode);
-      gainNode.connect(masterGain as GainNode);
-
-      source.start(0);
-
-      // Libera referencias en cuanto termina (limpieza automática,
-      // el GC se encarga, pero esto evita listeners colgados).
-      source.onended = () => {
-        source.disconnect();
-        gainNode.disconnect();
-      };
-    } catch {
-      // Reproducción silenciosamente ignorada si algo falla
-      // (por ejemplo, contexto cerrado).
-    }
-  };
-
   if (existingBuffer) {
-    // Caso normal: el buffer ya está listo, reproducción instantánea.
-    play(existingBuffer);
-    return;
+    const ctx = getAudioContext();
+
+    if (ctx && masterGain) {
+      try {
+        const source = ctx.createBufferSource();
+        source.buffer = existingBuffer;
+
+        const gainNode = ctx.createGain();
+        gainNode.gain.value = volumeOverride ?? SOUND_CONFIG[sound].volume;
+
+        source.connect(gainNode);
+        gainNode.connect(masterGain);
+
+        source.start(0);
+
+        source.onended = () => {
+          source.disconnect();
+          gainNode.disconnect();
+        };
+
+        return;
+      } catch {
+        // Si algo falla con Web Audio, cae al fallback.
+      }
+    }
   }
 
-  // Si todavía no se cargó (p. ej. preloadSounds no se llamó
-  // o aún no terminó), se carga al vuelo y se reproduce en cuanto esté listo.
-  loadSound(sound).then((buffer) => {
-    if (buffer) {
-      play(buffer);
-    }
-  });
+  // Buffer no listo todavía (o Web Audio falló): usar fallback
+  // inmediato para que SIEMPRE suene desde el primer click.
+  playFallback(sound, volumeOverride);
+
+  // Aseguramos que la carga del buffer esté en curso para que
+  // las próximas reproducciones ya puedan usar Web Audio.
+  void loadSound(sound);
 }
 
 /**
  * Silenciar/activar todos los sonidos sin detener el contexto.
- * Útil para un botón de mute global.
+ * Nota: solo afecta reproducciones vía Web Audio; si en algún
+ * momento se usa el fallback, su volumen se controla por
+ * instancia (ver playFallback).
  */
 export function setMuted(muted: boolean): void {
   if (!masterGain) {
@@ -232,12 +293,11 @@ export function setMuted(muted: boolean): void {
 
 /**
  * Liberar recursos (opcional).
- * Normalmente no es necesario llamarlo en una SPA,
- * pero útil si el audio se desmonta por completo.
  */
 export function disposeSounds(): void {
   audioBuffers.clear();
   loadingPromises.clear();
+  fallbackElements.clear();
 
   if (audioContext) {
     audioContext.close().catch(() => {});
