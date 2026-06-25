@@ -321,13 +321,39 @@ export default function Intro() {
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     if (isMobile) {
+      let fallbackFired = false;
+      let cancelled = false;
+
+      const cancelFallback = () => {
+        cancelled = true;
+      };
+
+      // Si la pestaña pierde el foco o se oculta, significa que
+      // el celular SÍ logró abrir la app de Instagram.
+      // En ese caso cancelamos el fallback para que, al volver
+      // a la pestaña, no se vuelva a redirigir.
+      window.addEventListener("blur", cancelFallback, { once: true });
+      document.addEventListener(
+        "visibilitychange",
+        () => {
+          if (document.hidden) cancelFallback();
+        },
+        { once: true }
+      );
+
       // Redirección inmediata al deep link de la app
       window.location.href = `instagram://user?username=${cleanInstagram}`;
 
-      // Fallback: si Instagram no está instalado, seguimos
-      // en la página tras 800ms, así que abrimos el navegador normal
+      // Fallback: solo se ejecuta si la pestaña SIGUE visible
+      // tras 800ms, es decir, si Instagram no estaba instalado
+      // y el deep link no abrió ninguna app.
       window.setTimeout(() => {
-        window.location.href = socialUrl;
+        window.removeEventListener("blur", cancelFallback);
+
+        if (!cancelled && !fallbackFired && !document.hidden) {
+          fallbackFired = true;
+          window.location.href = socialUrl;
+        }
       }, 800);
     } else {
       window.open(socialUrl, "_blank");
