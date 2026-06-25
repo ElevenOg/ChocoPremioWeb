@@ -1,13 +1,10 @@
 "use client";
 
 // Hooks de React
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 // Librería de animaciones
-import {
-  motion,
-  AnimatePresence
-} from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 // Navegación y parámetros dinámicos de Next.js
 import { useRouter, useParams } from "next/navigation";
@@ -25,10 +22,7 @@ import ChocolateBackground from "../components/ChocolateBackground";
 import useBlockBackNavigation from "../components/useBlockBackNavigation";
 
 // AUDIO MANAGER
-import {
-  playSound,
-  preloadSounds
-} from "../components/AudioManager";
+import { playSound, preloadSounds } from "../components/AudioManager";
 
 interface Commerce {
   id: string;
@@ -37,7 +31,6 @@ interface Commerce {
 }
 
 export default function Intro() {
-
   /**
    * BLOQUEA regresar desde Intro
    * (se queda en Intro)
@@ -57,8 +50,7 @@ export default function Intro() {
   const [loading, setLoading] = useState<boolean>(true);
 
   // Datos del comercio cargados desde Supabase
-  const [commerce, setCommerce] =
-  useState<Commerce | null>(null);
+  const [commerce, setCommerce] = useState<Commerce | null>(null);
 
   /**
    * Guarda la sesión creada en game_sessions
@@ -71,6 +63,14 @@ export default function Intro() {
    */
   const [startingGame, setStartingGame] = useState<boolean>(false);
 
+  /**
+   * Controla si ya se hizo la precarga de sonidos.
+   * Se dispara en el primer gesto real del usuario
+   * (click), no en el montaje, para que AudioContext
+   * no quede suspendido en Safari/iOS.
+   */
+  const soundsPreloaded = useRef(false);
+
   // Router de Next.js
   const router = useRouter();
 
@@ -79,27 +79,22 @@ export default function Intro() {
 
   // Prefetch de la página del juego
   useEffect(() => {
-  const slug = params?.slug;
+    const slug = params?.slug;
 
-  if (!slug) return;
+    if (!slug) return;
 
-  router.prefetch(`/${slug}/game`);
-}, [router, params?.slug]);
+    router.prefetch(`/${slug}/game`);
+  }, [router, params?.slug]);
 
   // Referencia para el scroll interno del modal
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   /**
-   * Inicialización sonidos
-   * y recuperación de sesión guardada
+   * Recuperación de sesión guardada.
+   * (la precarga de sonidos se movió al primer
+   * gesto del usuario, ver ensureSoundsReady)
    */
   useEffect(() => {
-
-    /**
-     * Precarga global sonidos
-     */
-    preloadSounds();
-
     /**
      * Recupera si el usuario ya siguió la cuenta
      */
@@ -117,7 +112,6 @@ export default function Intro() {
     if (acceptedSession === "true") {
       setAccepted(true);
     }
-
   }, []);
 
   /**
@@ -125,9 +119,7 @@ export default function Intro() {
    * según el slug de la URL
    */
   useEffect(() => {
-
     const loadCommerce = async () => {
-
       // Activa loader
       setLoading(true);
 
@@ -142,7 +134,6 @@ export default function Intro() {
 
       // Manejo de errores
       if (error || !data) {
-
         console.error(error);
 
         setCommerce(null);
@@ -170,15 +161,13 @@ export default function Intro() {
        * Mantiene la misma sesión aunque recargue
        * SOLO cambia si cierra pestaña/navegador
        */
-      const existingSessionId =
-        sessionStorage.getItem("intro_session_id");
+      const existingSessionId = sessionStorage.getItem("intro_session_id");
 
       /**
        * Si ya existe sesión en esta pestaña
        * reutiliza la misma
        */
       if (existingSessionId) {
-
         setSessionId(existingSessionId);
 
         setLoading(false);
@@ -218,7 +207,6 @@ export default function Intro() {
        * perder
        */
       if (sessionData) {
-
         setSessionId(sessionData.id);
 
         /**
@@ -226,10 +214,7 @@ export default function Intro() {
          * si recarga se mantiene
          * si cierra pestaña desaparece
          */
-        sessionStorage.setItem(
-          "intro_session_id",
-          sessionData.id
-        );
+        sessionStorage.setItem("intro_session_id", sessionData.id);
       }
 
       // Finaliza loader
@@ -237,116 +222,137 @@ export default function Intro() {
     };
 
     loadCommerce();
-
   }, [params.slug]);
 
   /**
    * Animación automática del scroll
-   * dentro del modal de términos
+   * dentro del modal de términos.
+   *
+   * Se limpian los timeouts si el modal se cierra
+   * antes de que termine la secuencia, para evitar
+   * llamadas innecesarias sobre un ref obsoleto.
    */
   useEffect(() => {
+    if (!showModal || !scrollRef.current) return;
 
-    if (showModal && scrollRef.current) {
+    const el = scrollRef.current;
 
-      const el = scrollRef.current;
+    const cleanupTimeouts: ReturnType<typeof setTimeout>[] = [];
 
-      setTimeout(() => {
+    const downTimeout = setTimeout(() => {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: "smooth"
+      });
 
-        // Scroll hacia abajo
+      const upTimeout = setTimeout(() => {
         el.scrollTo({
-          top: el.scrollHeight,
+          top: 0,
           behavior: "smooth"
         });
+      }, 700);
 
-        // Regresa al inicio
-        setTimeout(() => {
+      // Guardamos referencia para poder limpiarlo también
+      cleanupTimeouts.push(upTimeout);
+    }, 200);
 
-          el.scrollTo({
-            top: 0,
-            behavior: "smooth"
-          });
+    cleanupTimeouts.push(downTimeout);
 
-        }, 700);
-
-      }, 200);
-    }
-
+    return () => {
+      cleanupTimeouts.forEach(clearTimeout);
+    };
   }, [showModal]);
 
   /**
-   * Reproduce sonido click
+   * Asegura que el AudioContext se cree/reanude
+   * dentro de un gesto real del usuario (requisito
+   * de Safari/iOS). Se ejecuta solo una vez.
    */
-  const playClick = () => {
+  const ensureSoundsReady = useCallback(() => {
+    if (soundsPreloaded.current) return;
 
-    playSound("click");
-  };
+    soundsPreloaded.current = true;
+
+    preloadSounds();
+  }, []);
 
   /**
-   * Maneja el botón de seguir Instagram
+   * Reproduce sonido click.
+   * También garantiza que el audio esté listo
+   * (primer gesto del usuario).
    */
-  const handleFollow = async () => {
+  const playClick = useCallback(() => {
+    ensureSoundsReady();
 
-    /**
-     * Evita doble click
-     */
+    playSound("click");
+  }, [ensureSoundsReady]);
+
+  /**
+   * Maneja el botón de seguir Instagram.
+   *
+   * FIX clave: la redirección ocurre de forma SÍNCRONA
+   * dentro del evento de click, sin esperar ningún await
+   * antes. Si se espera una promesa (como el update a Supabase)
+   * antes de redirigir, el navegador deja de considerar la
+   * navegación como originada por un gesto directo del usuario,
+   * y por eso en móvil aparecía el aviso de "¿deseas salir?".
+   *
+   * El guardado en Supabase ahora corre en paralelo,
+   * sin bloquear la redirección.
+   *
+   * Además se agrega un fallback: si Instagram no está
+   * instalado, tras 800ms sin cambiar de app, abre la URL
+   * normal en el navegador.
+   */
+  const handleFollow = useCallback(() => {
     if (followed) return;
 
     playClick();
 
-    // Validación de URL social
     if (!commerce?.social_url) return;
 
-    /**
-     * Actualiza estadística
-     * de personas que dieron seguir
-     */
-    if (sessionId) {
+    const socialUrl = commerce.social_url;
 
-      await supabase
-        .from("game_sessions")
-        .update({
-          clicked_social: true
-        })
-        .eq("id", sessionId);
-    }
-
-    /**
-     * Limpia el username de Instagram
-     * para abrir la app móvil
-     */
-    const cleanInstagram = commerce.social_url
+    const cleanInstagram = socialUrl
       .replace("https://instagram.com/", "")
       .replace("https://www.instagram.com/", "")
       .replaceAll("/", "");
 
-    // Detecta dispositivos móviles
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(
-      navigator.userAgent
-    );
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-    // Abre app móvil o navegador
     if (isMobile) {
+      // Redirección inmediata al deep link de la app
+      window.location.href = `instagram://user?username=${cleanInstagram}`;
 
-      window.location.href =
-        `instagram://user?username=${cleanInstagram}`;
-
+      // Fallback: si Instagram no está instalado, seguimos
+      // en la página tras 800ms, así que abrimos el navegador normal
+      window.setTimeout(() => {
+        window.location.href = socialUrl;
+      }, 800);
     } else {
-
-      window.open(commerce.social_url, "_blank");
+      window.open(socialUrl, "_blank");
     }
 
-    // Marca seguimiento como completado
     setFollowed(true);
 
-    // Guarda estado en sesión
     sessionStorage.setItem("followed", "true");
-  };
+
+    // Guardado de estadística EN PARALELO, no bloqueante
+    if (sessionId) {
+      supabase
+        .from("game_sessions")
+        .update({ clicked_social: true })
+        .eq("id", sessionId)
+        .then(({ error }) => {
+          if (error) console.error(error);
+        });
+    }
+  }, [followed, playClick, commerce, sessionId]);
 
   /**
    * Maneja inicio del juego
    */
-  const handleStartGame = async () => {
-
+  const handleStartGame = useCallback(async () => {
     /**
      * Evita doble click
      * y múltiples inserts/updates
@@ -358,17 +364,13 @@ export default function Intro() {
     playClick();
 
     try {
-
       /**
        * Marca que el usuario jugó
        */
       if (sessionId) {
-
         await supabase
           .from("game_sessions")
-          .update({
-            played: true
-          })
+          .update({ played: true })
           .eq("id", sessionId);
       }
 
@@ -379,23 +381,40 @@ export default function Intro() {
        * perdió
        * premio
        */
-      router.push(
-        `/${params.slug}/game?session=${sessionId}`
-      );
-
+      router.push(`/${params.slug}/game?session=${sessionId}`);
     } catch (error) {
-
       console.error(error);
 
       setStartingGame(false);
     }
-  };
+  }, [startingGame, playClick, sessionId, router, params.slug]);
+
+  /**
+   * Maneja apertura del modal de términos
+   */
+  const handleOpenTermsModal = useCallback(() => {
+    playClick();
+
+    setShowModal(true);
+  }, [playClick]);
+
+  /**
+   * Maneja aceptación de términos
+   */
+  const handleAcceptTerms = useCallback(() => {
+    playClick();
+
+    setAccepted(true);
+
+    sessionStorage.setItem("accepted", "true");
+
+    setShowModal(false);
+  }, [playClick]);
 
   /**
    * Pantalla de carga inicial
    */
   if (loading) {
-
     return <ChocolateLoader />;
   }
 
@@ -403,11 +422,8 @@ export default function Intro() {
    * Comercio no encontrado
    */
   if (!commerce) {
-
     return (
-
       <ChocolateBackground>
-
         <h1
           style={{
             color: "#4d3800",
@@ -420,15 +436,12 @@ export default function Intro() {
         >
           NO DISPONIBLE
         </h1>
-
       </ChocolateBackground>
     );
   }
 
   return (
-
     <ChocolateBackground>
-
       {/* Tarjeta principal */}
       <motion.div
         initial={{
@@ -446,14 +459,14 @@ export default function Intro() {
         }}
         style={styles.card}
       >
-
         {/* Emoji animado */}
         <motion.div
           whileTap={{ scale: 0.9 }}
           animate={{ rotate: [0, 5, -5, 0] }}
           transition={{
             duration: 2,
-            repeat: Infinity
+            repeat: Infinity,
+            repeatType: "loop"
           }}
           style={styles.emoji}
         >
@@ -468,7 +481,8 @@ export default function Intro() {
           }}
           transition={{
             duration: 2.5,
-            repeat: Infinity
+            repeat: Infinity,
+            repeatType: "loop"
           }}
         >
           <>
@@ -484,30 +498,21 @@ export default function Intro() {
 
         {/* Caja de términos */}
         <div style={styles.termsBox}>
-
           <label style={styles.termsLabel}>
-
             <input
               type="checkbox"
               checked={accepted}
               onClick={(e) => {
-
                 e.preventDefault();
 
-                playClick();
-
-                setShowModal(true);
+                handleOpenTermsModal();
               }}
               readOnly
               style={styles.checkbox}
             />
 
-            <span>
-              Acepto términos y condiciones
-            </span>
-
+            <span>Acepto términos y condiciones</span>
           </label>
-
         </div>
 
         {/* Botón de Instagram */}
@@ -517,89 +522,52 @@ export default function Intro() {
           whileHover={{ scale: 1.05 }}
           style={{
             ...styles.instaButton,
-            background: followed
-              ? "#fffb012c"
-              : "#4d3800",
-            color: followed
-              ? "#000000"
-              : "#ffffff",
-            border: followed
-              ? "1px solid #fffb01"
-              : "1px solid #4d3800"
+            background: followed ? "#fffb012c" : "#4d3800",
+            color: followed ? "#000000" : "#ffffff",
+            border: followed ? "1px solid #fffb01" : "1px solid #4d3800"
           }}
         >
-          {followed
-            ? "✔ Cuenta seguida"
-            : "Seguir en Instagram"}
+          {followed ? "✔ Cuenta seguida" : "Seguir en Instagram"}
         </motion.button>
 
         {/* Botón para iniciar juego */}
         <motion.button
-          disabled={
-            !(accepted && followed) ||
-            startingGame
-          }
+          disabled={!(accepted && followed) || startingGame}
           onClick={handleStartGame}
           whileTap={{ scale: 0.95 }}
           whileHover={{
-            scale:
-              accepted &&
-              followed &&
-              !startingGame
-                ? 1.05
-                : 1
+            scale: accepted && followed && !startingGame ? 1.05 : 1
           }}
           style={{
             ...styles.button,
-            opacity:
-              accepted &&
-              followed &&
-              !startingGame
-                ? 1
-                : 0.5
+            opacity: accepted && followed && !startingGame ? 1 : 0.5
           }}
         >
-          {startingGame
-            ? "CARGANDO..."
-            : "JUGAR AHORA"}
+          {startingGame ? "CARGANDO..." : "JUGAR AHORA"}
         </motion.button>
 
         {/* Mensaje de validación */}
         <p
           style={{
             ...styles.warning,
-            visibility:
-              accepted && followed
-                ? "hidden"
-                : "visible"
+            visibility: accepted && followed ? "hidden" : "visible"
           }}
         >
           Debes aceptar y seguir en Instagram
         </p>
-
       </motion.div>
 
       {/* Modal de términos */}
       <AnimatePresence>
-
         {showModal && (
-
           <motion.div
-            initial={{
-              opacity: 0
-            }}
-            animate={{
-              opacity: 1
-            }}
-            exit={{
-              opacity: 0
-            }}
-            transition={{
-              duration: 0.25
-            }}
+            key="terms-modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
             style={styles.modalOverlay}
           >
-
             <motion.div
               initial={{
                 scale: 0.7,
@@ -623,15 +591,8 @@ export default function Intro() {
               }}
               style={styles.modal}
             >
-
-              <div
-                ref={scrollRef}
-                style={styles.modalContent}
-              >
-
-                <h3 style={styles.modalTitle}>
-                  Condiciones
-                </h3>
+              <div ref={scrollRef} style={styles.modalContent}>
+                <h3 style={styles.modalTitle}>Condiciones</h3>
 
                 <ul style={styles.modalList}>
                   <li>• Juega solo en el punto</li>
@@ -647,9 +608,7 @@ export default function Intro() {
                   <li>• Redención válida únicamente el día de la participación</li>
                 </ul>
 
-                <h3 style={styles.modalTitle}>
-                  Términos
-                </h3>
+                <h3 style={styles.modalTitle}>Términos</h3>
 
                 <ul style={styles.modalList}>
                   <li>• Participar implica aceptar términos</li>
@@ -662,33 +621,14 @@ export default function Intro() {
                 <p style={styles.modalNote}>
                   🎥 Puede ser grabado con fines promocionales
                 </p>
-
               </div>
 
-              <button
-                style={styles.modalButton}
-                onClick={() => {
-
-                  playClick();
-
-                  setAccepted(true);
-
-                  sessionStorage.setItem(
-                    "accepted",
-                    "true"
-                  );
-
-                  setShowModal(false);
-                }}
-              >
+              <button style={styles.modalButton} onClick={handleAcceptTerms}>
                 Acepto
               </button>
-
             </motion.div>
-
           </motion.div>
         )}
-
       </AnimatePresence>
 
       {/* Personalización scrollbar */}
@@ -707,7 +647,6 @@ export default function Intro() {
           border-radius: 10px;
         }
       `}</style>
-
     </ChocolateBackground>
   );
 }
@@ -716,7 +655,6 @@ export default function Intro() {
  * Objeto global de estilos
  */
 const styles: { [key: string]: React.CSSProperties } = {
-
   card: {
     width: "100%",
     maxWidth: "400px",
@@ -731,13 +669,15 @@ const styles: { [key: string]: React.CSSProperties } = {
 
   emoji: {
     fontSize: "clamp(60px, 12vw, 80px)",
+    willChange: "transform"
   },
 
   title: {
     fontSize: "clamp(20px, 5vw, 25px)",
     fontWeight: "900",
     color: "#4d3800",
-    marginBottom: "15px"
+    marginBottom: "15px",
+    willChange: "opacity"
   },
 
   text: {

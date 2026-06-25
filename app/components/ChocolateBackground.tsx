@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, memo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
 interface ChocolateBackgroundProps {
@@ -14,10 +14,12 @@ interface ChocolateBackgroundProps {
   hideFloatingEmojis?: boolean;
 }
 
-function ChocolateTop() {
-
+/**
+ * Componente 100% estático: nunca cambia entre renders,
+ * por eso se memoiza para evitar reconciliaciones innecesarias.
+ */
+const ChocolateTop = memo(function ChocolateTop() {
   return (
-
     <svg
       style={styles.chocolateTop}
       viewBox="0 0 100 40"
@@ -41,15 +43,35 @@ function ChocolateTop() {
       />
     </svg>
   );
+});
+
+/**
+ * Hook simple para respetar prefers-reduced-motion:
+ * desactiva animaciones a quienes lo activan en su sistema
+ * (ahorra batería/CPU y mejora accesibilidad).
+ */
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(mediaQuery.matches);
+
+    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
+    mediaQuery.addEventListener("change", handler);
+    return () => mediaQuery.removeEventListener("change", handler);
+  }, []);
+
+  return reduced;
 }
 
-export default function ChocolateBackground({
+function ChocolateBackground({
   children,
   hideFloatingEmojis = false
 }: ChocolateBackgroundProps) {
+  const reducedMotion = useReducedMotion();
 
   return (
-
     <div style={styles.container}>
 
       {/* Glow superior */}
@@ -67,14 +89,19 @@ export default function ChocolateBackground({
           {/* Elemento flotante izquierdo */}
           <motion.div
             style={styles.floating1}
-            animate={{
-              y: [0, -8, -14, -8, 0],
-              rotate: [0, 3, -3, 2, 0],
-              scale: [1, 1.03, 1.05, 1.03, 1]
-            }}
+            animate={
+              reducedMotion
+                ? undefined
+                : {
+                    y: [0, -12, 0],
+                    rotate: [0, 3, 0],
+                    scale: [1, 1.04, 1]
+                  }
+            }
             transition={{
               duration: 6,
               repeat: Infinity,
+              repeatType: "loop",
               ease: "easeInOut"
             }}
           >
@@ -84,14 +111,19 @@ export default function ChocolateBackground({
           {/* Elemento flotante derecho */}
           <motion.div
             style={styles.floating2}
-            animate={{
-              y: [0, 8, 14, 8, 0],
-              rotate: [0, -3, 3, -2, 0],
-              scale: [1, 1.03, 1.05, 1.03, 1]
-            }}
+            animate={
+              reducedMotion
+                ? undefined
+                : {
+                    y: [0, 12, 0],
+                    rotate: [0, -3, 0],
+                    scale: [1, 1.04, 1]
+                  }
+            }
             transition={{
               duration: 6.5,
               repeat: Infinity,
+              repeatType: "loop",
               ease: "easeInOut"
             }}
           >
@@ -103,26 +135,36 @@ export default function ChocolateBackground({
       {/* Burbuja glow 1 */}
       <motion.div
         style={styles.bubble1}
-        animate={{
-          y: [0, -30, 0],
-          opacity: [0.3, 0.6, 0.3]
-        }}
+        animate={
+          reducedMotion
+            ? undefined
+            : {
+                y: [0, -30, 0],
+                opacity: [0.3, 0.6, 0.3]
+              }
+        }
         transition={{
           duration: 6,
-          repeat: Infinity
+          repeat: Infinity,
+          repeatType: "loop"
         }}
       />
 
       {/* Burbuja glow 2 */}
       <motion.div
         style={styles.bubble2}
-        animate={{
-          y: [0, 25, 0],
-          opacity: [0.25, 0.55, 0.25]
-        }}
+        animate={
+          reducedMotion
+            ? undefined
+            : {
+                y: [0, 25, 0],
+                opacity: [0.25, 0.55, 0.25]
+              }
+        }
         transition={{
           duration: 7,
-          repeat: Infinity
+          repeat: Infinity,
+          repeatType: "loop"
         }}
       />
 
@@ -134,6 +176,8 @@ export default function ChocolateBackground({
     </div>
   );
 }
+
+export default memo(ChocolateBackground);
 
 const styles: {
   [key: string]: React.CSSProperties;
@@ -175,26 +219,28 @@ const styles: {
     position: "absolute",
     top: "-200px",
     left: "50%",
-    transform: "translateX(-50%)",
+    transform: "translateX(-50%) translateZ(0)",
     width: "800px",
     height: "400px",
     background: "rgba(255,255,255,0.35)",
     filter: "blur(100px)",
     borderRadius: "50%",
-    zIndex: 0
+    zIndex: 0,
+    willChange: "opacity"
   },
 
   bottomGlow: {
     position: "absolute",
     bottom: "-250px",
     left: "50%",
-    transform: "translateX(-50%)",
+    transform: "translateX(-50%) translateZ(0)",
     width: "700px",
     height: "350px",
     background: "rgba(255,215,120,0.28)",
     filter: "blur(120px)",
     borderRadius: "50%",
-    zIndex: 0
+    zIndex: 0,
+    willChange: "opacity"
   },
 
   floating1: {
@@ -228,7 +274,8 @@ const styles: {
     borderRadius: "50%",
     background: "rgba(255,255,255,0.2)",
     filter: "blur(40px)",
-    zIndex: 1
+    zIndex: 1,
+    willChange: "transform, opacity"
   },
 
   bubble2: {
@@ -240,6 +287,7 @@ const styles: {
     borderRadius: "50%",
     background: "rgba(255,210,120,0.22)",
     filter: "blur(45px)",
-    zIndex: 1
+    zIndex: 1,
+    willChange: "transform, opacity"
   }
 };

@@ -1,12 +1,13 @@
 /**
  * AudioManager
- * Optimizado para:
- * - reproducción instantánea
- * - menos delay en móviles
- * - reutilización global
- * - Safari/iPhone compatible
- * - Android compatible
- * - menor consumo
+ *
+ * Reescrito con Web Audio API para:
+ * - reproducción instantánea (sin latencia de HTMLAudioElement)
+ * - sin "doble sonido" por colisión de pool
+ * - sin delay tras tiempo de inactividad
+ * - menor consumo (un solo buffer decodificado por sonido)
+ * - Android / iPhone / Safari / Chrome
+ * - reproducción simultánea ilimitada y segura
  */
 
 type SoundName =
@@ -15,32 +16,27 @@ type SoundName =
   | "click"
   | "break";
 
-/**
- * Configuración sonidos
- */
-const SOUND_CONFIG: Record<
-  SoundName,
-  {
-    src: string;
-    volume: number;
-  }
-> = {
+interface SoundConfig {
+  src: string;
+  volume: number;
+}
 
+/**
+ * Configuración
+ */
+const SOUND_CONFIG: Record<SoundName, SoundConfig> = {
   win: {
     src: "/sounds/win.mp3",
     volume: 0.6
   },
-
   lose: {
     src: "/sounds/lose.mp3",
     volume: 0.6
   },
-
   click: {
     src: "/sounds/click.mp3",
     volume: 0.4
   },
-
   break: {
     src: "/sounds/break.mp3",
     volume: 0.7
@@ -48,155 +44,204 @@ const SOUND_CONFIG: Record<
 };
 
 /**
- * Cache global
+ * Contexto de audio único (singleton).
+ * Se crea de forma "lazy" porque Safari/iOS
+ * exige que se cree o reanude tras un gesto del usuario.
  */
-const audioCache = new Map<
-  SoundName,
-  HTMLAudioElement
->();
+let audioContext: AudioContext | null = null;
 
 /**
- * Crear audio optimizado
+ * Buffers ya decodificados, uno por sonido.
+ * Se decodifican una sola vez y se reutilizan
+ * en cada reproducción (sin volver a descargar/decodificar).
  */
-function createAudio(
-  sound: SoundName
-) {
+const audioBuffers = new Map<SoundName, AudioBuffer>();
 
-  if (
-    typeof window ===
-    "undefined"
-  ) {
+/**
+ * Sonidos que ya están en proceso de carga,
+ * para no disparar fetch duplicados si playSound
+ * se llama antes de que termine preloadSounds.
+ */
+const loadingPromises = new Map<SoundName, Promise<AudioBuffer | null>>();
+
+/**
+ * Nodo maestro de volumen (opcional, útil para mute global).
+ */
+let masterGain: GainNode | null = null;
+
+function getAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") {
     return null;
   }
 
-  /**
-   * Reutilizar audio existente
-   */
-  const cached =
-    audioCache.get(sound);
+  if (!audioContext) {
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
 
-  if (cached) {
-    return cached;
+    if (!AudioContextClass) {
+      return null;
+    }
+
+    audioContext = new AudioContextClass();
+    masterGain = audioContext.createGain();
+    masterGain.gain.value = 1;
+    masterGain.connect(audioContext.destination);
   }
 
-  const config =
-    SOUND_CONFIG[sound];
+  // Safari/iOS suspende el contexto hasta el primer gesto del usuario.
+  // Lo reanudamos cada vez que intentamos usarlo, sin costo si ya está activo.
+  if (audioContext.state === "suspended") {
+    audioContext.resume().catch(() => {});
+  }
 
-  const audio =
-    new Audio(config.src);
-
-  /**
-   * Precarga agresiva
-   */
-  audio.preload =
-    "auto";
-
-  /**
-   * Compatibilidad móvil
-   */
-  audio.setAttribute(
-    "playsinline",
-    "true"
-  );
-
-  audio.setAttribute(
-    "webkit-playsinline",
-    "true"
-  );
-
-  /**
-   * Configuración inicial
-   */
-  audio.volume =
-    config.volume;
-
-  /**
-   * Evita algunos delays
-   */
-  audio.load();
-
-  /**
-   * Guardar cache
-   */
-  audioCache.set(
-    sound,
-    audio
-  );
-
-  return audio;
+  return audioContext;
 }
 
 /**
- * Precargar sonidos
- * Ejecutar UNA vez en layout
+ * Descarga y decodifica un sonido a AudioBuffer.
+ * Si ya existe o ya se está cargando, reutiliza esa promesa.
  */
-export function preloadSounds() {
+function loadSound(sound: SoundName): Promise<AudioBuffer | null> {
+  const existing = audioBuffers.get(sound);
+  if (existing) {
+    return Promise.resolve(existing);
+  }
 
-  (
-    Object.keys(
-      SOUND_CONFIG
-    ) as SoundName[]
-  ).forEach((sound) => {
+  const inFlight = loadingPromises.get(sound);
+  if (inFlight) {
+    return inFlight;
+  }
 
-    createAudio(sound);
+  const ctx = getAudioContext();
+  if (!ctx) {
+    return Promise.resolve(null);
+  }
+
+  const config = SOUND_CONFIG[sound];
+
+  const promise = fetch(config.src)
+    .then((res) => res.arrayBuffer())
+    .then((arrayBuffer) => ctx.decodeAudioData(arrayBuffer))
+    .then((buffer) => {
+      audioBuffers.set(sound, buffer);
+      loadingPromises.delete(sound);
+      return buffer;
+    })
+    .catch(() => {
+      loadingPromises.delete(sound);
+      return null;
+    });
+
+  loadingPromises.set(sound, promise);
+  return promise;
+}
+
+/**
+ * Precargar todos los sonidos.
+ *
+ * Llamar una sola vez, idealmente tras el primer
+ * gesto del usuario (click/tap) para cumplir con las
+ * políticas de autoplay de Safari/iOS y Chrome.
+ */
+export function preloadSounds(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  // Crear/activar el contexto en el gesto del usuario.
+  getAudioContext();
+
+  (Object.keys(SOUND_CONFIG) as SoundName[]).forEach((sound) => {
+    void loadSound(sound);
   });
 }
 
 /**
- * Reproducir sonido
+ * Reproducir sonido.
+ *
+ * Cada llamada crea su propio AudioBufferSourceNode
+ * de un solo uso: no hay pool, no hay colisión,
+ * no hay "doble sonido", y la reproducción simultánea
+ * (varios clicks rápidos) es nativa y segura.
  */
-export function playSound(
-  sound: SoundName
-) {
+export function playSound(sound: SoundName, volumeOverride?: number): void {
+  if (typeof window === "undefined") {
+    return;
+  }
 
-  try {
+  const ctx = getAudioContext();
+  if (!ctx || !masterGain) {
+    return;
+  }
 
-    const original =
-      createAudio(sound);
+  const config = SOUND_CONFIG[sound];
+  const existingBuffer = audioBuffers.get(sound);
 
-    if (!original)
-      return;
+  const play = (buffer: AudioBuffer) => {
+    try {
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
 
-    /**
-     * Clonar para evitar
-     * cortes si se reproduce
-     * varias veces rápido
-     */
-    const audio =
-      original.cloneNode(
-        true
-      ) as HTMLAudioElement;
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = volumeOverride ?? config.volume;
 
-    audio.volume =
-      SOUND_CONFIG[sound]
-        .volume;
+      source.connect(gainNode);
+      gainNode.connect(masterGain as GainNode);
 
-    /**
-     * Inicio inmediato
-     */
-    audio.currentTime = 0;
+      source.start(0);
 
-    /**
-     * Reproducir
-     */
-    const playPromise =
-      audio.play();
-
-    /**
-     * Evitar errores silenciosos
-     */
-    if (playPromise) {
-
-      playPromise.catch(
-        () => null
-      );
+      // Libera referencias en cuanto termina (limpieza automática,
+      // el GC se encarga, pero esto evita listeners colgados).
+      source.onended = () => {
+        source.disconnect();
+        gainNode.disconnect();
+      };
+    } catch {
+      // Reproducción silenciosamente ignorada si algo falla
+      // (por ejemplo, contexto cerrado).
     }
+  };
 
-  } catch (error) {
+  if (existingBuffer) {
+    // Caso normal: el buffer ya está listo, reproducción instantánea.
+    play(existingBuffer);
+    return;
+  }
 
-    console.error(
-      "SOUND ERROR",
-      error
-    );
+  // Si todavía no se cargó (p. ej. preloadSounds no se llamó
+  // o aún no terminó), se carga al vuelo y se reproduce en cuanto esté listo.
+  loadSound(sound).then((buffer) => {
+    if (buffer) {
+      play(buffer);
+    }
+  });
+}
+
+/**
+ * Silenciar/activar todos los sonidos sin detener el contexto.
+ * Útil para un botón de mute global.
+ */
+export function setMuted(muted: boolean): void {
+  if (!masterGain) {
+    return;
+  }
+  masterGain.gain.value = muted ? 0 : 1;
+}
+
+/**
+ * Liberar recursos (opcional).
+ * Normalmente no es necesario llamarlo en una SPA,
+ * pero útil si el audio se desmonta por completo.
+ */
+export function disposeSounds(): void {
+  audioBuffers.clear();
+  loadingPromises.clear();
+
+  if (audioContext) {
+    audioContext.close().catch(() => {});
+    audioContext = null;
+    masterGain = null;
   }
 }

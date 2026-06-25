@@ -1,57 +1,80 @@
 "use client";
 
+import { memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function ChocolateLoader() {
+interface ChocolateLoaderProps {
+  /**
+   * Controla si el loader está visible.
+   * El padre decide cuándo mostrarlo/ocultarlo,
+   * y AnimatePresence se encarga de animar la salida
+   * de forma correcta (a diferencia de envolverlo
+   * internamente sin condición real de desmontaje).
+   *
+   * Ejemplo de uso en el padre:
+   *   <ChocolateLoader isVisible={isLoading} />
+   */
+  isVisible?: boolean;
+}
+
+function ChocolateLoader({ isVisible = true }: ChocolateLoaderProps) {
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.25 }}
-        style={styles.container}
-      >
-        {/* Glow suave */}
+      {isVisible && (
         <motion.div
-          animate={{
-            scale: [1, 1.15, 1],
-            opacity: [0.2, 0.35, 0.2],
-          }}
-          transition={{
-            duration: 2,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-          style={styles.glow}
-        />
-
-        {/* Chocolate */}
-        <motion.div
-          animate={{
-            rotate: 360,
-            y: [0, -8, 0],
-          }}
-          transition={{
-            rotate: {
-              duration: 1.2,
-              repeat: Infinity,
-              ease: "linear",
-            },
-            y: {
+          key="chocolate-loader"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.25 }}
+          style={styles.container}
+        >
+          {/* Glow suave */}
+          <motion.div
+            animate={{
+              scale: [1, 1.15, 1],
+              opacity: [0.2, 0.35, 0.2]
+            }}
+            transition={{
               duration: 2,
               repeat: Infinity,
-              ease: "easeInOut",
-            },
-          }}
-          style={styles.chocolate}
-        >
-          🍫
+              repeatType: "loop",
+              ease: "easeInOut"
+            }}
+            style={styles.glow}
+          />
+
+          {/* Chocolate */}
+          <motion.div
+            animate={{
+              rotate: 360,
+              y: [0, -8, 0]
+            }}
+            transition={{
+              rotate: {
+                duration: 1.2,
+                repeat: Infinity,
+                repeatType: "loop",
+                ease: "linear"
+              },
+              y: {
+                duration: 2,
+                repeat: Infinity,
+                repeatType: "loop",
+                ease: "easeInOut"
+              }
+            }}
+            style={styles.chocolate}
+          >
+            🍫
+          </motion.div>
         </motion.div>
-      </motion.div>
+      )}
     </AnimatePresence>
   );
 }
+
+export default memo(ChocolateLoader);
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
@@ -61,9 +84,13 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     alignItems: "center",
     zIndex: 999999,
-    background: "radial-gradient(circle at top,#fffdf6 0%,#fff6e4 35%,#fdeccf 60%,#f6ddb1 100%)",
-    backdropFilter: "blur(4px)",
-    WebkitBackdropFilter: "blur(4px)",
+    background:
+      "radial-gradient(circle at top,#fffdf6 0%,#fff6e4 35%,#fdeccf 60%,#f6ddb1 100%)"
+    // backdropFilter eliminado: el fondo ya es opaco y cubre
+    // toda la pantalla, así que no hay contenido detrás que
+    // necesite desenfocarse. Esto elimina el cálculo de blur
+    // más costoso de todo el componente (se recalculaba en
+    // cada frame sobre el 100% del viewport).
   },
 
   glow: {
@@ -73,11 +100,12 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: "999px",
     background: "rgba(77,56,0,0.12)",
     filter: "blur(20px)",
+    willChange: "transform, opacity"
   },
 
   chocolate: {
     fontSize: "clamp(55px,11vw,85px)",
     willChange: "transform",
-    userSelect: "none",
-  },
+    userSelect: "none"
+  }
 };
