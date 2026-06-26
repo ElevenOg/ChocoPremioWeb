@@ -1,27 +1,12 @@
 "use client";
 
-// Hooks de React
 import { useState, useRef, useEffect, useCallback } from "react";
-
-// Librería de animaciones
 import { motion, AnimatePresence } from "framer-motion";
-
-// Navegación y parámetros dinámicos de Next.js
 import { useRouter, useParams } from "next/navigation";
-
-// Cliente de Supabase
 import { supabase } from "@/lib/supabase";
-
-// COMPONENTE DE CARGA
 import ChocolateLoader from "../components/ChocolateLoader";
-
-// COMPONENTE DE FONDO
 import ChocolateBackground from "../components/ChocolateBackground";
-
-// BLOQUEO DE NAVEGACIÓN
 import useBlockBackNavigation from "../components/useBlockBackNavigation";
-
-// AUDIO MANAGER
 import { playSound, preloadSounds } from "../components/AudioManager";
 
 interface Commerce {
@@ -30,125 +15,140 @@ interface Commerce {
   social_url: string | null;
 }
 
+/**
+ * Chip de paso — componente separado
+ * evita re-renders del padre al cambiar un paso
+ */
+const StepChip = ({
+  number,
+  label,
+  done,
+  locked,
+  onClick
+}: {
+  number: number;
+  label: string;
+  done: boolean;
+  locked?: boolean;
+  onClick?: () => void;
+}) => (
+  <motion.div
+    onClick={onClick}
+    whileTap={onClick ? { scale: 0.97 } : {}}
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
+      padding: "12px 14px",
+      borderRadius: "16px",
+      background: done
+        ? "rgba(77,56,0,0.1)"
+        : locked
+        ? "rgba(0,0,0,0.04)"
+        : "rgba(255,229,0,0.2)",
+      border: done
+        ? "1.5px solid #4d3800"
+        : locked
+        ? "1.5px solid rgba(0,0,0,0.1)"
+        : "1.5px solid #ffe500",
+      cursor: onClick ? "pointer" : "default",
+      opacity: locked ? 0.5 : 1,
+      transition: "all 0.25s ease",
+      WebkitTapHighlightColor: "transparent"
+    }}
+  >
+    <div style={{
+      width: "28px",
+      height: "28px",
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: "13px",
+      fontWeight: 800,
+      flexShrink: 0,
+      background: done ? "#4d3800" : locked ? "#ccc" : "#ffe500",
+      color: done ? "#fff" : locked ? "#fff" : "#4d3800",
+      transition: "all 0.3s ease"
+    }}>
+      {done ? "✓" : number}
+    </div>
+
+    <span style={{
+      flex: 1,
+      textAlign: "left",
+      fontSize: "clamp(13px, 3.5vw, 15px)",
+      color: done ? "#4d3800" : locked ? "#999" : "#3a2800",
+      fontWeight: done ? 700 : 500,
+      transition: "all 0.25s ease"
+    }}>
+      {label}
+    </span>
+
+    {!done && !locked && (
+      <span style={{ color: "#c47a00", fontSize: "16px", fontWeight: 700 }}>
+        →
+      </span>
+    )}
+  </motion.div>
+);
+
 export default function Intro() {
-  /**
-   * BLOQUEA regresar desde Intro
-   * (se queda en Intro)
-   */
+
   useBlockBackNavigation();
 
-  // Estado para controlar si aceptó términos
   const [accepted, setAccepted] = useState<boolean>(false);
-
-  // Estado para saber si siguió la cuenta
   const [followed, setFollowed] = useState<boolean>(false);
-
-  // Estado para abrir/cerrar modal
   const [showModal, setShowModal] = useState<boolean>(false);
-
-  // Estado de carga inicial
   const [loading, setLoading] = useState<boolean>(true);
-
-  // Datos del comercio cargados desde Supabase
   const [commerce, setCommerce] = useState<Commerce | null>(null);
-
-  /**
-   * Guarda la sesión creada en game_sessions
-   * para luego actualizar estadísticas
-   */
   const [sessionId, setSessionId] = useState<string | null>(null);
-
-  /**
-   * Evita doble click en jugar
-   */
   const [startingGame, setStartingGame] = useState<boolean>(false);
 
   /**
-   * Controla si ya se hizo la precarga de sonidos.
-   * Se dispara en el primer gesto real del usuario
-   * (click), no en el montaje, para que AudioContext
-   * no quede suspendido en Safari/iOS.
+   * Controla animación de salida antes de navegar
    */
+  const [cardVisible, setCardVisible] = useState<boolean>(true);
+
   const soundsPreloaded = useRef(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const navTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Router de Next.js
   const router = useRouter();
-
-  // Parámetros dinámicos de la URL
   const params = useParams<{ slug: string }>();
 
-  // Prefetch de la página del juego
   useEffect(() => {
-    const slug = params?.slug;
-
-    if (!slug) return;
-
-    router.prefetch(`/${slug}/game`);
+    if (!params?.slug) return;
+    router.prefetch(`/${params.slug}/game`);
   }, [router, params?.slug]);
 
-  // Referencia para el scroll interno del modal
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-
-  /**
-   * Recuperación de sesión guardada.
-   * (la precarga de sonidos se movió al primer
-   * gesto del usuario, ver ensureSoundsReady)
-   */
   useEffect(() => {
-    /**
-     * Recupera si el usuario ya siguió la cuenta
-     */
     const followedSession = sessionStorage.getItem("followed");
+    if (followedSession === "true") setFollowed(true);
 
-    if (followedSession === "true") {
-      setFollowed(true);
-    }
-
-    /**
-     * Recupera si aceptó términos
-     */
     const acceptedSession = sessionStorage.getItem("accepted");
-
-    if (acceptedSession === "true") {
-      setAccepted(true);
-    }
+    if (acceptedSession === "true") setAccepted(true);
   }, []);
 
-  /**
-   * Carga dinámica del comercio
-   * según el slug de la URL
-   */
   useEffect(() => {
     const loadCommerce = async () => {
-      // Activa loader
       setLoading(true);
 
-      /**
-       * Busca comercio por slug
-       */
       const { data, error } = await supabase
         .from("commerces")
         .select("*")
         .eq("slug", params.slug)
         .maybeSingle();
 
-      // Manejo de errores
       if (error || !data) {
         console.error(error);
-
         setCommerce(null);
-
         setLoading(false);
-
         return;
       }
 
-      // Guarda datos del comercio
       setCommerce(data);
 
-      /**
-       * Busca campaña activa del comercio
-       */
       const { data: activeCampaign } = await supabase
         .from("campaigns")
         .select("*")
@@ -156,224 +156,107 @@ export default function Intro() {
         .eq("active", true)
         .single();
 
-      /**
-       * SESSION PERSISTENTE:
-       * Mantiene la misma sesión aunque recargue
-       * SOLO cambia si cierra pestaña/navegador
-       */
       const existingSessionId = sessionStorage.getItem("intro_session_id");
 
-      /**
-       * Si ya existe sesión en esta pestaña
-       * reutiliza la misma
-       */
       if (existingSessionId) {
         setSessionId(existingSessionId);
-
         setLoading(false);
-
         return;
       }
 
-      /**
-       * Crea sesión automáticamente
-       * apenas entra a Intro
-       *
-       * Esto cuenta:
-       * "Cuántos escanearon"
-       */
       const { data: sessionData, error: sessionError } = await supabase
         .from("game_sessions")
-        .insert([
-          {
-            commerce_id: data.id,
-            campaign_id: activeCampaign?.id || null,
-            scanned_qr: true
-          }
-        ])
+        .insert([{
+          commerce_id: data.id,
+          campaign_id: activeCampaign?.id || null,
+          scanned_qr: true
+        }])
         .select()
         .single();
 
-      if (sessionError) {
-        console.error(sessionError);
-      }
+      if (sessionError) console.error(sessionError);
 
-      /**
-       * Guarda session ID
-       * para luego actualizar:
-       * seguir instagram
-       * jugar
-       * ganar
-       * perder
-       */
       if (sessionData) {
         setSessionId(sessionData.id);
-
-        /**
-         * Se guarda SOLO por pestaña
-         * si recarga se mantiene
-         * si cierra pestaña desaparece
-         */
         sessionStorage.setItem("intro_session_id", sessionData.id);
       }
 
-      // Finaliza loader
       setLoading(false);
     };
 
     loadCommerce();
   }, [params.slug]);
 
-  /**
-   * Animación automática del scroll
-   * dentro del modal de términos.
-   *
-   * Se limpian los timeouts si el modal se cierra
-   * antes de que termine la secuencia, para evitar
-   * llamadas innecesarias sobre un ref obsoleto.
-   */
   useEffect(() => {
     if (!showModal || !scrollRef.current) return;
 
     const el = scrollRef.current;
+    const cleanups: ReturnType<typeof setTimeout>[] = [];
 
-    const cleanupTimeouts: ReturnType<typeof setTimeout>[] = [];
-
-    const downTimeout = setTimeout(() => {
-      el.scrollTo({
-        top: el.scrollHeight,
-        behavior: "smooth"
-      });
-
-      const upTimeout = setTimeout(() => {
-        el.scrollTo({
-          top: 0,
-          behavior: "smooth"
-        });
+    const t1 = setTimeout(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      const t2 = setTimeout(() => {
+        el.scrollTo({ top: 0, behavior: "smooth" });
       }, 700);
-
-      // Guardamos referencia para poder limpiarlo también
-      cleanupTimeouts.push(upTimeout);
+      cleanups.push(t2);
     }, 200);
 
-    cleanupTimeouts.push(downTimeout);
-
-    return () => {
-      cleanupTimeouts.forEach(clearTimeout);
-    };
+    cleanups.push(t1);
+    return () => cleanups.forEach(clearTimeout);
   }, [showModal]);
 
-  /**
-   * Asegura que el AudioContext se cree/reanude
-   * dentro de un gesto real del usuario (requisito
-   * de Safari/iOS). Se ejecuta solo una vez.
-   */
+  useEffect(() => {
+    return () => {
+      if (navTimeout.current) clearTimeout(navTimeout.current);
+    };
+  }, []);
+
   const ensureSoundsReady = useCallback(() => {
     if (soundsPreloaded.current) return;
-
     soundsPreloaded.current = true;
-
     preloadSounds();
   }, []);
 
-  /**
-   * Reproduce sonido click.
-   * También garantiza que el audio esté listo
-   * (primer gesto del usuario).
-   */
   const playClick = useCallback(() => {
     ensureSoundsReady();
-
     playSound("click");
   }, [ensureSoundsReady]);
 
-  /**
-   * Maneja el botón de seguir Instagram.
-   *
-   * FIX clave: la redirección ocurre de forma SÍNCRONA
-   * dentro del evento de click, sin esperar ningún await
-   * antes. Si se espera una promesa (como el update a Supabase)
-   * antes de redirigir, el navegador deja de considerar la
-   * navegación como originada por un gesto directo del usuario,
-   * y por eso en móvil aparecía el aviso de "¿deseas salir?".
-   *
-   * El guardado en Supabase ahora corre en paralelo,
-   * sin bloquear la redirección.
-   *
-   * Además se agrega un fallback: si Instagram no está
-   * instalado, tras 800ms sin cambiar de app, abre la URL
-   * normal en el navegador.
-   */
   const handleFollow = useCallback(() => {
     if (followed) return;
-
     playClick();
-
     if (!commerce?.social_url) return;
 
-    const socialUrl = commerce.social_url;
-
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
     if (isMobile) {
-      /**
-       * Usamos el LINK UNIVERSAL de Instagram
-       * (https://instagram.com/usuario), NO el esquema
-       * personalizado (instagram://).
-       *
-       * Por qué: los links universales (Universal Links en iOS,
-       * App Links en Android) los resuelve el propio sistema
-       * operativo de forma nativa, UNA sola vez:
-       * - Si Instagram está instalado, el SO intercepta la
-       *   navegación https y abre la app directamente.
-       * - Si no está instalado, el navegador simplemente
-       *   sigue normal a la página web de Instagram.
-       *
-       * Esto evita por completo el problema de "doble redirección"
-       * que ocurre con esquemas personalizados (instagram://)
-       * combinados con timeouts de fallback, porque ya no hay
-       * que adivinar si la app abrió o no — lo decide el sistema
-       * antes de que JavaScript tenga que hacer nada extra.
-       */
-      window.location.href = socialUrl;
+      window.location.href = commerce.social_url;
     } else {
-      window.open(socialUrl, "_blank");
+      window.open(commerce.social_url, "_blank");
     }
 
     setFollowed(true);
-
     sessionStorage.setItem("followed", "true");
 
-    // Guardado de estadística EN PARALELO, no bloqueante
     if (sessionId) {
       supabase
         .from("game_sessions")
         .update({ clicked_social: true })
         .eq("id", sessionId)
-        .then(({ error }) => {
-          if (error) console.error(error);
-        });
+        .then(({ error }) => { if (error) console.error(error); });
     }
   }, [followed, playClick, commerce, sessionId]);
 
-  /**
-   * Maneja inicio del juego
-   */
   const handleStartGame = useCallback(async () => {
-    /**
-     * Evita doble click
-     * y múltiples inserts/updates
-     */
     if (startingGame) return;
-
     setStartingGame(true);
-
     playClick();
 
+    /**
+     * Dispara animación de salida primero
+     */
+    setCardVisible(false);
+
     try {
-      /**
-       * Marca que el usuario jugó
-       */
       if (sessionId) {
         await supabase
           .from("game_sessions")
@@ -382,65 +265,46 @@ export default function Intro() {
       }
 
       /**
-       * Envía session_id al juego
-       * para luego guardar:
-       * ganó
-       * perdió
-       * premio
+       * Espera el exit animation (~400ms) antes de navegar
        */
-      router.push(`/${params.slug}/game?session=${sessionId}`);
+      navTimeout.current = setTimeout(() => {
+        router.push(`/${params.slug}/game?session=${sessionId}`);
+      }, 400);
+
     } catch (error) {
       console.error(error);
-
       setStartingGame(false);
+      setCardVisible(true);
     }
   }, [startingGame, playClick, sessionId, router, params.slug]);
 
-  /**
-   * Maneja apertura del modal de términos
-   */
   const handleOpenTermsModal = useCallback(() => {
     playClick();
-
     setShowModal(true);
   }, [playClick]);
 
-  /**
-   * Maneja aceptación de términos
-   */
   const handleAcceptTerms = useCallback(() => {
     playClick();
-
     setAccepted(true);
-
     sessionStorage.setItem("accepted", "true");
-
     setShowModal(false);
   }, [playClick]);
 
-  /**
-   * Pantalla de carga inicial
-   */
-  if (loading) {
-    return <ChocolateLoader />;
-  }
+  const canPlay = accepted && followed && !startingGame;
 
-  /**
-   * Comercio no encontrado
-   */
+  if (loading) return <ChocolateLoader />;
+
   if (!commerce) {
     return (
       <ChocolateBackground>
-        <h1
-          style={{
-            color: "#4d3800",
-            fontSize: "clamp(18px, 4vw, 24px)",
-            fontWeight: "900",
-            textAlign: "center",
-            zIndex: 2,
-            letterSpacing: "1px"
-          }}
-        >
+        <h1 style={{
+          color: "#4d3800",
+          fontSize: "clamp(18px, 4vw, 24px)",
+          fontWeight: "900",
+          textAlign: "center",
+          zIndex: 2,
+          letterSpacing: "1px"
+        }}>
           NO DISPONIBLE
         </h1>
       </ChocolateBackground>
@@ -449,158 +313,235 @@ export default function Intro() {
 
   return (
     <ChocolateBackground>
-      {/* Tarjeta principal */}
-      <motion.div
-        initial={{
-          scale: 0.8,
-          opacity: 0,
-          y: 50
-        }}
-        animate={{
-          scale: 1,
-          opacity: 1,
-          y: 0
-        }}
-        transition={{
-          duration: 0.6
-        }}
-        style={styles.card}
-      >
-        {/* Emoji animado */}
-        <motion.div
-          whileTap={{ scale: 0.9 }}
-          animate={{ rotate: [0, 5, -5, 0] }}
-          transition={{
-            duration: 2,
-            repeat: Infinity,
-            repeatType: "loop"
-          }}
-          style={styles.emoji}
-        >
-          🍫
-        </motion.div>
 
-        {/* Título principal */}
-        <motion.h1
-          style={styles.title}
-          animate={{
-            opacity: [1, 0.92, 1]
-          }}
-          transition={{
-            duration: 2.5,
-            repeat: Infinity,
-            repeatType: "loop"
-          }}
-        >
-          <>
-            ¡JUEGA Y GANA TU <br />
-            PREMIO!
-          </>
-        </motion.h1>
+      {/* Partículas flotantes — CSS puro, sin JS extra */}
+      <div style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex: 0,
+        overflow: "hidden"
+      }} aria-hidden="true">
+        {[...Array(6)].map((_, i) => (
+          <span key={i} style={{
+            position: "absolute",
+            bottom: "-20px",
+            left: `${8 + i * 16}%`,
+            fontSize: i % 2 === 0 ? "20px" : "14px",
+            opacity: 0.15 + i * 0.02,
+            animationName: "floatUp",
+            animationDuration: `${5 + i * 0.9}s`,
+            animationDelay: `${i * 0.8}s`,
+            animationTimingFunction: "linear",
+            animationIterationCount: "infinite",
+            userSelect: "none"
+          }}>
+            🍫
+          </span>
+        ))}
+      </div>
 
-        {/* Texto descriptivo */}
-        <p style={styles.text}>
-          Rompe el chocolate y prueba tu suerte
-        </p>
+      {/* Card principal con AnimatePresence para exit animation */}
+      <AnimatePresence mode="wait">
+        {cardVisible && (
+          <motion.div
+            key="intro-card"
+            initial={{ scale: 0.82, opacity: 0, y: 60 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 1.05, opacity: 0, y: -40 }}
+            transition={{
+              type: "spring",
+              damping: 22,
+              stiffness: 160,
+              mass: 0.8
+            }}
+            style={styles.card}
+          >
 
-        {/* Caja de términos */}
-        <div style={styles.termsBox}>
-          <label style={styles.termsLabel}>
-            <input
-              type="checkbox"
-              checked={accepted}
-              onClick={(e) => {
-                e.preventDefault();
+            {/* Imagen chocolate flotante */}
+            <div style={styles.logoWrapper}>
+              {/* Halo pulsante detrás */}
+              <motion.div
+                style={styles.halo}
+                animate={{
+                  scale: [1, 1.15, 1],
+                  opacity: [0.3, 0.55, 0.3]
+                }}
+                transition={{
+                  duration: 2.8,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+              />
+              <motion.img
+                src="/images/choco.png"
+                alt="Chocolate"
+                style={styles.logoImage}
+                animate={{
+                  y: [0, -8, 0],
+                  rotate: [-1, 1, -1]
+                }}
+                transition={{
+                  duration: 3.5,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+                draggable={false}
+              />
+            </div>
 
-                handleOpenTermsModal();
-              }}
-              readOnly
-              style={styles.checkbox}
+            {/* Título */}
+            <motion.h1
+              style={styles.title}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15, duration: 0.4 }}
+            >
+              ¡ROMPE Y GANA
+              <br />
+              <span style={styles.titleAccent}>TU PREMIO!</span>
+            </motion.h1>
+
+            {/* Subtítulo */}
+            <motion.p
+              style={styles.subtitle}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25, duration: 0.4 }}
+            >
+              Rompe el chocolate y descubre tu sorpresa
+            </motion.p>
+
+            {/* Divider decorativo */}
+            <motion.div
+              style={styles.divider}
+              initial={{ scaleX: 0, opacity: 0 }}
+              animate={{ scaleX: 1, opacity: 1 }}
+              transition={{ delay: 0.35, duration: 0.4 }}
             />
 
-            <span>Acepto términos y condiciones</span>
-          </label>
-        </div>
+            {/* Steps */}
+            <motion.div
+              style={styles.steps}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.4 }}
+            >
+              <StepChip
+                number={1}
+                label="Acepta los términos"
+                done={accepted}
+                onClick={!accepted ? handleOpenTermsModal : undefined}
+              />
+              <StepChip
+                number={2}
+                label="Síguenos en redes"
+                done={followed}
+                onClick={!followed ? handleFollow : undefined}
+              />
+              <StepChip
+                number={3}
+                label="¡Empieza el juego!"
+                done={false}
+                locked={!canPlay}
+              />
+            </motion.div>
 
-        {/* Botón de Instagram */}
-        <motion.button
-          onClick={handleFollow}
-          whileTap={{ scale: 0.95 }}
-          whileHover={{ scale: 1.05 }}
-          style={{
-            ...styles.instaButton,
-            background: followed ? "#fffb012c" : "#4d3800",
-            color: followed ? "#000000" : "#ffffff",
-            border: followed ? "1px solid #fffb01" : "1px solid #4d3800"
-          }}
-        >
-          {followed ? "✔ Cuenta seguida" : "Seguir en Instagram"}
-        </motion.button>
+            {/* Botón principal */}
+            <motion.div
+              style={{ width: "100%" }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 0.4 }}
+            >
+              <motion.button
+                disabled={!canPlay}
+                onClick={handleStartGame}
+                whileTap={canPlay ? { scale: 0.96 } : {}}
+                style={{
+                  ...styles.button,
+                  opacity: canPlay ? 1 : 0.45,
+                  cursor: canPlay ? "pointer" : "not-allowed",
+                  position: "relative",
+                  overflow: "hidden"
+                }}
+              >
+                {/* Shimmer cuando está activo */}
+                {canPlay && (
+                  <motion.span
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "55%",
+                      height: "100%",
+                      background:
+                        "linear-gradient(90deg, transparent, rgba(255,229,0,0.3), transparent)",
+                      zIndex: 0
+                    }}
+                    animate={{ x: ["-100%", "280%"] }}
+                    transition={{
+                      duration: 1.8,
+                      repeat: Infinity,
+                      repeatDelay: 1.4,
+                      ease: "easeInOut"
+                    }}
+                  />
+                )}
+                <span style={{ position: "relative", zIndex: 1 }}>
+                  {startingGame ? "CARGANDO" : " JUGAR AHORA"}
+                </span>
+              </motion.button>
+            </motion.div>
 
-        {/* Botón para iniciar juego */}
-        <motion.button
-          disabled={!(accepted && followed) || startingGame}
-          onClick={handleStartGame}
-          whileTap={{ scale: 0.95 }}
-          whileHover={{
-            scale: accepted && followed && !startingGame ? 1.05 : 1
-          }}
-          style={{
-            ...styles.button,
-            opacity: accepted && followed && !startingGame ? 1 : 0.5
-          }}
-        >
-          {startingGame ? "CARGANDO..." : "JUGAR AHORA"}
-        </motion.button>
+            {/* Mensaje de validación dinámico */}
+            <AnimatePresence>
+              {!canPlay && (
+                <motion.p
+                  key="warning"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  style={styles.warning}
+                >
+                  {!accepted && !followed
+                    ? "Completa los pasos 1 y 2 para jugar"
+                    : !accepted
+                    ? "Acepta los términos primero"
+                    : "Síguenos en Instagram primero"}
+                </motion.p>
+              )}
+            </AnimatePresence>
 
-        {/* Mensaje de validación */}
-        <p
-          style={{
-            ...styles.warning,
-            visibility: accepted && followed ? "hidden" : "visible"
-          }}
-        >
-          Debes aceptar y seguir en Instagram
-        </p>
-      </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modal de términos */}
       <AnimatePresence>
         {showModal && (
           <motion.div
-            key="terms-modal-overlay"
+            key="terms-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
+            transition={{ duration: 0.22 }}
             style={styles.modalOverlay}
+            onClick={() => setShowModal(false)}
           >
             <motion.div
-              initial={{
-                scale: 0.7,
-                opacity: 0,
-                y: 40
-              }}
-              animate={{
-                scale: 1,
-                opacity: 1,
-                y: 0
-              }}
-              exit={{
-                scale: 0.7,
-                opacity: 0,
-                y: 40
-              }}
-              transition={{
-                duration: 0.35,
-                type: "spring",
-                damping: 18
-              }}
+              initial={{ scale: 0.75, opacity: 0, y: 50 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.75, opacity: 0, y: 50 }}
+              transition={{ type: "spring", damping: 20, stiffness: 200 }}
               style={styles.modal}
+              onClick={(e) => e.stopPropagation()}
             >
               <div ref={scrollRef} style={styles.modalContent}>
                 <h3 style={styles.modalTitle}>Condiciones</h3>
-
                 <ul style={styles.modalList}>
                   <li>• Juega solo en el punto</li>
                   <li>• 1 intento por persona</li>
@@ -614,9 +555,7 @@ export default function Intro() {
                   <li>• El premio debe validarse en el punto de atención</li>
                   <li>• Redención válida únicamente el día de la participación</li>
                 </ul>
-
                 <h3 style={styles.modalTitle}>Términos</h3>
-
                 <ul style={styles.modalList}>
                   <li>• Participar implica aceptar términos</li>
                   <li>• Es una actividad promocional</li>
@@ -624,125 +563,135 @@ export default function Intro() {
                   <li>• Cualquier intento de manipulación anula la participación</li>
                   <li>• En caso de fallas técnicas, la dinámica podrá ser ajustada</li>
                 </ul>
-
                 <p style={styles.modalNote}>
                   🎥 Puede ser grabado con fines promocionales
                 </p>
               </div>
-
               <button style={styles.modalButton} onClick={handleAcceptTerms}>
-                Acepto
+                Acepto los términos
               </button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Personalización scrollbar */}
       <style jsx global>{`
-        ::-webkit-scrollbar {
-          width: 6px;
+        @keyframes floatUp {
+          0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
+          10%  { opacity: 1; }
+          90%  { opacity: 0.6; }
+          100% { transform: translateY(-105vh) rotate(20deg); opacity: 0; }
         }
-
-        ::-webkit-scrollbar-track {
-          background: #e6d3a3;
-          border-radius: 10px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-          background: #4d3800;
-          border-radius: 10px;
-        }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: #e6d3a3; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #4d3800; border-radius: 10px; }
       `}</style>
+
     </ChocolateBackground>
   );
 }
 
-/**
- * Objeto global de estilos
- */
 const styles: { [key: string]: React.CSSProperties } = {
+
   card: {
     width: "100%",
     maxWidth: "400px",
-    background: "rgba(255,255,255,0.95)",
-    borderRadius: "30px",
-    padding: "22px 16px",
+    background: "rgba(255,255,255,0.97)",
+    borderRadius: "32px",
+    padding: "28px 20px 24px",
     textAlign: "center",
-    boxShadow: "0 25px 70px rgba(0,0,0,0.25)",
+    boxShadow: "0 32px 80px rgba(77,56,0,0.2), 0 8px 24px rgba(0,0,0,0.08)",
     zIndex: 5,
-    position: "relative"
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "0px"
   },
 
-  emoji: {
-    fontSize: "clamp(60px, 12vw, 80px)",
-    willChange: "transform"
-  },
-
-  title: {
-    fontSize: "clamp(20px, 5vw, 25px)",
-    fontWeight: "900",
-    color: "#4d3800",
-    marginBottom: "15px",
-    willChange: "opacity"
-  },
-
-  text: {
-    fontSize: "clamp(15px, 4vw, 18px)",
-    color: "#000000",
-    marginBottom: "25px"
-  },
-
-  termsBox: {
-    background: "#fffb012c",
-    padding: "10px",
-    borderRadius: "15px",
-    marginBottom: "15px",
-    border: "1px solid #fffb01"
-  },
-
-  instaButton: {
-    width: "100%",
-    padding: "10px",
-    borderRadius: "15px",
-    fontSize: "15px",
-    cursor: "pointer",
-    marginBottom: "25px"
-  },
-
-  termsLabel: {
-    fontSize: "15px",
+  logoWrapper: {
+    position: "relative",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "10px",
-    color: "#000000"
+    marginBottom: "8px"
   },
 
-  checkbox: {
-    width: "18px",
-    height: "18px",
-    accentColor: "#4d3800",
-    cursor: "pointer"
+  halo: {
+    position: "absolute",
+    width: "clamp(120px, 28vw, 160px)",
+    height: "clamp(120px, 28vw, 160px)",
+    borderRadius: "50%",
+    background:
+      "radial-gradient(circle, rgba(255,229,0,0.55) 0%, transparent 70%)",
+    zIndex: 1
+  },
+
+  logoImage: {
+    width: "clamp(50px, 15vw, 95px)",
+    height: "auto",
+    position: "relative",
+    zIndex: 2,
+    userSelect: "none",
+    pointerEvents: "none"
+  },
+
+  title: {
+    fontSize: "clamp(24px, 6.5vw, 30px)",
+    fontWeight: 900,
+    color: "#4d3800",
+    marginBottom: "8px",
+    marginTop: "4px",
+    lineHeight: 1.2,
+    letterSpacing: "-0.5px"
+  },
+
+  titleAccent: {
+    color: "#c47a00",
+    fontSize: "clamp(22px, 6vw, 28px)"
+  },
+
+  subtitle: {
+    fontSize: "clamp(13px, 3.5vw, 15px)",
+    color: "#7a6040",
+    marginBottom: "16px",
+    marginTop: "0px"
+  },
+
+  divider: {
+    width: "48px",
+    height: "3px",
+    borderRadius: "2px",
+    background: "linear-gradient(90deg, #ffe500, #c47a00)",
+    marginBottom: "18px"
+  },
+
+  steps: {
+    width: "100%",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    marginBottom: "20px"
   },
 
   button: {
     width: "100%",
-    padding: "16px",
+    padding: "17px",
     borderRadius: "50px",
     border: "none",
-    background: "#4d3800",
+    background: "linear-gradient(135deg, #4d3800, #7a5c00)",
     color: "#fff",
-    fontSize: "18px",
-    fontWeight: "bold",
-    cursor: "pointer"
+    fontSize: "clamp(16px, 4vw, 18px)",
+    fontWeight: 900,
+    letterSpacing: "1px",
+    boxShadow: "0 6px 20px rgba(77,56,0,0.35)"
   },
 
   warning: {
-    fontSize: "15px",
-    color: "#565656",
+    fontSize: "13px",
+    color: "#9a7a40",
     marginTop: "10px",
-    height: "16px"
+    textAlign: "center"
   },
 
   modalOverlay: {
@@ -751,63 +700,71 @@ const styles: { [key: string]: React.CSSProperties } = {
     left: 0,
     width: "100%",
     height: "100%",
-    background: "rgba(0,0,0,0.5)",
-    backdropFilter: "blur(5px)",
+    background: "rgba(0,0,0,0.55)",
+    backdropFilter: "blur(6px)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 10
+    zIndex: 20,
+    padding: "20px",
+    boxSizing: "border-box"
   },
 
   modal: {
-    width: "90%",
-    maxWidth: "350px",
-    height: "500px",
+    width: "100%",
+    maxWidth: "360px",
+    maxHeight: "80vh",
     background: "#fffaf3",
-    borderRadius: "20px",
+    borderRadius: "24px",
     display: "flex",
     flexDirection: "column",
-    overflow: "hidden"
+    overflow: "hidden",
+    boxShadow: "0 24px 60px rgba(0,0,0,0.25)"
   },
 
   modalContent: {
-    padding: "20px",
+    padding: "24px 20px",
     overflowY: "auto",
     flex: 1,
     scrollbarColor: "#4d3800 #e6d3a3",
-    scrollbarWidth: "thin"
+    scrollbarWidth: "thin" as const
   },
 
   modalTitle: {
-    fontSize: "18px",
+    fontSize: "17px",
     textAlign: "center",
-    fontWeight: "900",
-    marginBottom: "10px",
+    fontWeight: 900,
+    marginBottom: "12px",
     color: "#4d3800"
   },
 
   modalList: {
     textAlign: "left",
-    fontSize: "15px",
-    marginBottom: "10px",
-    color: "#000000"
+    fontSize: "14px",
+    marginBottom: "14px",
+    color: "#3a2800",
+    lineHeight: 1.8,
+    paddingLeft: "4px"
   },
 
   modalNote: {
-    fontSize: "15px",
+    fontSize: "14px",
     textAlign: "center",
-    marginTop: "25px",
-    marginBottom: "25px",
-    color: "#000000"
+    marginTop: "20px",
+    marginBottom: "20px",
+    color: "#7a6040"
   },
 
   modalButton: {
     width: "100%",
-    padding: "15px",
+    padding: "16px",
     border: "none",
     background: "#4d3800",
     color: "#fff",
-    fontWeight: "bold",
-    cursor: "pointer"
+    fontWeight: 900,
+    fontSize: "16px",
+    cursor: "pointer",
+    letterSpacing: "0.5px",
+    flexShrink: 0
   }
 };

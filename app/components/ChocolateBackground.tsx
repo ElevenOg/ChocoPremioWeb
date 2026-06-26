@@ -245,7 +245,7 @@ const styles: {
 
   floating1: {
     position: "absolute",
-    top: "10%",
+    top: "6%",
     left: "8%",
     fontSize: "clamp(34px, 5vw, 55px)",
     zIndex: 4,
@@ -256,7 +256,7 @@ const styles: {
 
   floating2: {
     position: "absolute",
-    bottom: "10%",
+    bottom: "6%",
     right: "8%",
     fontSize: "clamp(34px, 5vw, 55px)",
     zIndex: 4,
