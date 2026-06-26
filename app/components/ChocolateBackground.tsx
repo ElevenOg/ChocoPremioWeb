@@ -207,7 +207,7 @@ const styles: {
 
   chocolateTop: {
     position: "absolute",
-    top: -20,
+    top: -40,
     left: 0,
     width: "100%",
     height: "clamp(130px, 22vh, 240px)",
@@ -245,7 +245,7 @@ const styles: {
 
   floating1: {
     position: "absolute",
-    top: "6%",
+    top: "5%",
     left: "8%",
     fontSize: "clamp(34px, 5vw, 55px)",
     zIndex: 4,
@@ -256,7 +256,7 @@ const styles: {
 
   floating2: {
     position: "absolute",
-    bottom: "6%",
+    bottom: "5%",
     right: "8%",
     fontSize: "clamp(34px, 5vw, 55px)",
     zIndex: 4,

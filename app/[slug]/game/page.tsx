@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, memo } from "react";
 
 import { motion, useAnimation } from "framer-motion";
 
@@ -25,6 +25,40 @@ import {
   playSound,
   preloadSounds
 } from "../../components/AudioManager";
+
+/**
+ * Partícula individual memorizada.
+ * Evita que React vuelva a montar/diffear
+ * las partículas viejas cuando llegan nuevas.
+ */
+const Crumb = memo(function Crumb({
+  crumb
+}: {
+  crumb: { id: number; x: number; y: number; rotate: number; scale: number };
+}) {
+  return (
+    <motion.img
+      src="/images/parti.png"
+      initial={{
+        x: 0,
+        y: 0,
+        opacity: 1,
+        scale: crumb.scale
+      }}
+      animate={{
+        x: crumb.x,
+        y: crumb.y,
+        rotate: crumb.rotate,
+        opacity: 0
+      }}
+      transition={{
+        duration: 0.5,
+        ease: "easeOut"
+      }}
+      style={crumbStyle}
+    />
+  );
+});
 
 export default function Game() {
 
@@ -82,6 +116,20 @@ export default function Game() {
   const lastPlay = useRef(0);
 
   /**
+   * Timeouts activos, para poder limpiarlos
+   * todos si el componente se desmonta
+   * (evita setState en componente desmontado
+   * y fugas de memoria al salir rápido de la página)
+   */
+  const timeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const trackTimeout = useCallback((fn: () => void, ms: number) => {
+    const id = setTimeout(fn, ms);
+    timeouts.current.push(id);
+    return id;
+  }, []);
+
+  /**
    * Inicialización
    */
   useEffect(() => {
@@ -122,9 +170,20 @@ export default function Game() {
   }, []);
 
   /**
+   * Limpieza al desmontar: cancela cualquier
+   * timeout pendiente (partículas o navegación)
+   */
+  useEffect(() => {
+    return () => {
+      timeouts.current.forEach(clearTimeout);
+      timeouts.current = [];
+    };
+  }, []);
+
+  /**
    * Sonido de ruptura
    */
-  const playBreak = () => {
+  const playBreak = useCallback(() => {
 
     const now = Date.now();
 
@@ -136,23 +195,23 @@ export default function Game() {
      * Sonido desde AudioManager
      */
     playSound("break");
-  };
+  }, []);
 
   /**
    * Vibración móvil
    */
-  const vibrate = () => {
+  const vibrate = useCallback(() => {
 
     if (navigator.vibrate) {
 
       navigator.vibrate(40);
     }
-  };
+  }, []);
 
   /**
    * Animación de golpe
    */
-  const shake = () => {
+  const shake = useCallback(() => {
 
     controls.start({
       scale: [1, 0.88, 1.04, 0.97, 1],
@@ -161,12 +220,12 @@ export default function Game() {
         ease: "easeOut"
       }
     });
-  };
+  }, [controls]);
 
   /**
    * Genera partículas visuales
    */
-  const spawnCrumbs = () => {
+  const spawnCrumbs = useCallback(() => {
 
     const newCrumbs =
       Array.from({ length: 8 }).map(() => ({
@@ -182,19 +241,19 @@ export default function Game() {
       ...newCrumbs
     ]);
 
-    setTimeout(() => {
+    trackTimeout(() => {
 
       setCrumbs((prev) =>
         prev.slice(newCrumbs.length)
       );
 
     }, 500);
-  };
+  }, [trackTimeout]);
 
   /**
    * Maneja clicks del juego
    */
-  const handleClick = () => {
+  const handleClick = useCallback(() => {
 
     if (finished) return;
 
@@ -227,7 +286,7 @@ export default function Game() {
          * Navega al resultado final
          * enviando session_id
          */
-        setTimeout(() => {
+        trackTimeout(() => {
 
           router.push(
             `/${params.slug}/result?session=${sessionId}`
@@ -238,7 +297,18 @@ export default function Game() {
 
       return newClicks;
     });
-  };
+  }, [
+    finished,
+    maxClicks,
+    playBreak,
+    vibrate,
+    shake,
+    spawnCrumbs,
+    trackTimeout,
+    router,
+    params.slug,
+    sessionId
+  ]);
 
   return (
 
@@ -271,12 +341,7 @@ export default function Game() {
           )}
         </div>
 
-        <div
-          style={{
-            position: "relative",
-            display: "inline-block"
-          }}
-        >
+        <div style={relativeInline}>
 
           {/* Contenedor animado */}
           <motion.div
@@ -298,12 +363,11 @@ export default function Game() {
               whileTap={{
                 scale: finished ? 1 : 0.95
               }}
-              style={{
-                ...styles.chocolate,
-                cursor: finished
-                  ? "default"
-                  : "pointer"
-              }}
+              style={
+                finished
+                  ? styles.chocolateDefault
+                  : styles.chocolatePointer
+              }
             >
 
               {/* Chocolate */}
@@ -338,36 +402,7 @@ export default function Game() {
 
           {/* Partículas */}
           {crumbs.map((crumb) => (
-
-            <motion.img
-              key={crumb.id}
-              src="/images/parti.png"
-              initial={{
-                x: 0,
-                y: 0,
-                opacity: 1,
-                scale: crumb.scale
-              }}
-              animate={{
-                x: crumb.x,
-                y: crumb.y,
-                rotate: crumb.rotate,
-                opacity: 0
-              }}
-              transition={{
-                duration: 0.5,
-                ease: "easeOut"
-              }}
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                width: "12px",
-                pointerEvents: "none",
-                transform:
-                  "translate(-50%, -50%)"
-              }}
-            />
+            <Crumb key={crumb.id} crumb={crumb} />
           ))}
         </div>
 
@@ -395,6 +430,27 @@ export default function Game() {
     </ChocolateBackground>
   );
 }
+
+/**
+ * Estilos estáticos extraídos fuera del render
+ * para que sean la MISMA referencia de objeto
+ * en cada render (evita recrear objetos en cada
+ * pasada y ayuda a memo/diffing).
+ */
+const relativeInline: React.CSSProperties = {
+  position: "relative",
+  display: "inline-block"
+};
+
+const crumbStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "50%",
+  left: "50%",
+  width: "12px",
+  pointerEvents: "none",
+  transform: "translate(-50%, -50%)",
+  willChange: "transform, opacity"
+};
 
 const styles: {
   [key: string]: React.CSSProperties
@@ -428,12 +484,22 @@ const styles: {
     height: "100%",
     background:
       "linear-gradient(90deg, gold, orange)",
-    width: "0%"
+    width: "0%",
+    willChange: "width"
   },
 
-  chocolate: {
+  chocolatePointer: {
     marginBottom: "20px",
-    userSelect: "none"
+    userSelect: "none",
+    cursor: "pointer",
+    willChange: "transform"
+  },
+
+  chocolateDefault: {
+    marginBottom: "20px",
+    userSelect: "none",
+    cursor: "default",
+    willChange: "transform"
   },
 
   image: {

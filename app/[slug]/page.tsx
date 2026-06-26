@@ -15,10 +15,6 @@ interface Commerce {
   social_url: string | null;
 }
 
-/**
- * Chip de paso — componente separado
- * evita re-renders del padre al cambiar un paso
- */
 const StepChip = ({
   number,
   label,
@@ -85,7 +81,7 @@ const StepChip = ({
       {label}
     </span>
 
-    {!done && !locked && (
+    {onClick && (
       <span style={{ color: "#c47a00", fontSize: "16px", fontWeight: 700 }}>
         →
       </span>
@@ -104,10 +100,6 @@ export default function Intro() {
   const [commerce, setCommerce] = useState<Commerce | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startingGame, setStartingGame] = useState<boolean>(false);
-
-  /**
-   * Controla animación de salida antes de navegar
-   */
   const [cardVisible, setCardVisible] = useState<boolean>(true);
 
   const soundsPreloaded = useRef(false);
@@ -125,7 +117,6 @@ export default function Intro() {
   useEffect(() => {
     const followedSession = sessionStorage.getItem("followed");
     if (followedSession === "true") setFollowed(true);
-
     const acceptedSession = sessionStorage.getItem("accepted");
     if (acceptedSession === "true") setAccepted(true);
   }, []);
@@ -250,10 +241,6 @@ export default function Intro() {
     if (startingGame) return;
     setStartingGame(true);
     playClick();
-
-    /**
-     * Dispara animación de salida primero
-     */
     setCardVisible(false);
 
     try {
@@ -264,9 +251,6 @@ export default function Intro() {
           .eq("id", sessionId);
       }
 
-      /**
-       * Espera el exit animation (~400ms) antes de navegar
-       */
       navTimeout.current = setTimeout(() => {
         router.push(`/${params.slug}/game?session=${sessionId}`);
       }, 400);
@@ -314,7 +298,6 @@ export default function Intro() {
   return (
     <ChocolateBackground>
 
-      {/* Partículas flotantes — CSS puro, sin JS extra */}
       <div style={{
         position: "fixed",
         top: 0,
@@ -344,7 +327,6 @@ export default function Intro() {
         ))}
       </div>
 
-      {/* Card principal con AnimatePresence para exit animation */}
       <AnimatePresence mode="wait">
         {cardVisible && (
           <motion.div
@@ -361,9 +343,7 @@ export default function Intro() {
             style={styles.card}
           >
 
-            {/* Imagen chocolate flotante */}
             <div style={styles.logoWrapper}>
-              {/* Halo pulsante detrás */}
               <motion.div
                 style={styles.halo}
                 animate={{
@@ -393,7 +373,6 @@ export default function Intro() {
               />
             </div>
 
-            {/* Título */}
             <motion.h1
               style={styles.title}
               initial={{ opacity: 0, y: 12 }}
@@ -405,7 +384,6 @@ export default function Intro() {
               <span style={styles.titleAccent}>TU PREMIO!</span>
             </motion.h1>
 
-            {/* Subtítulo */}
             <motion.p
               style={styles.subtitle}
               initial={{ opacity: 0, y: 10 }}
@@ -415,7 +393,6 @@ export default function Intro() {
               Rompe el chocolate y descubre tu sorpresa
             </motion.p>
 
-            {/* Divider decorativo */}
             <motion.div
               style={styles.divider}
               initial={{ scaleX: 0, opacity: 0 }}
@@ -423,7 +400,6 @@ export default function Intro() {
               transition={{ delay: 0.35, duration: 0.4 }}
             />
 
-            {/* Steps */}
             <motion.div
               style={styles.steps}
               initial={{ opacity: 0, y: 14 }}
@@ -434,13 +410,13 @@ export default function Intro() {
                 number={1}
                 label="Acepta los términos"
                 done={accepted}
-                onClick={!accepted ? handleOpenTermsModal : undefined}
+                onClick={handleOpenTermsModal}
               />
               <StepChip
                 number={2}
                 label="Síguenos en redes"
                 done={followed}
-                onClick={!followed ? handleFollow : undefined}
+                onClick={handleFollow}
               />
               <StepChip
                 number={3}
@@ -450,7 +426,6 @@ export default function Intro() {
               />
             </motion.div>
 
-            {/* Botón principal */}
             <motion.div
               style={{ width: "100%" }}
               initial={{ opacity: 0, y: 10 }}
@@ -469,7 +444,6 @@ export default function Intro() {
                   overflow: "hidden"
                 }}
               >
-                {/* Shimmer cuando está activo */}
                 {canPlay && (
                   <motion.span
                     style={{
@@ -497,7 +471,6 @@ export default function Intro() {
               </motion.button>
             </motion.div>
 
-            {/* Mensaje de validación dinámico */}
             <AnimatePresence>
               {!canPlay && (
                 <motion.p
@@ -520,7 +493,6 @@ export default function Intro() {
         )}
       </AnimatePresence>
 
-      {/* Modal de términos */}
       <AnimatePresence>
         {showModal && (
           <motion.div
@@ -622,13 +594,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     width: "clamp(120px, 28vw, 160px)",
     height: "clamp(120px, 28vw, 160px)",
     borderRadius: "50%",
-    background:
-      "radial-gradient(circle, rgba(255,229,0,0.55) 0%, transparent 70%)",
+    background: "radial-gradient(circle, rgba(255,229,0,0.55) 0%, transparent 70%)",
     zIndex: 1
   },
 
   logoImage: {
-    width: "clamp(50px, 15vw, 95px)",
+    width: "clamp(50px, 10vw, 95px)",
     height: "auto",
     position: "relative",
     zIndex: 2,
@@ -637,7 +608,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
 
   title: {
-    fontSize: "clamp(24px, 6.5vw, 30px)",
+    fontSize: "clamp(20px, 5vw, 28px)",
     fontWeight: 900,
     color: "#4d3800",
     marginBottom: "8px",
@@ -648,7 +619,7 @@ const styles: { [key: string]: React.CSSProperties } = {
 
   titleAccent: {
     color: "#c47a00",
-    fontSize: "clamp(22px, 6vw, 28px)"
+    fontSize: "clamp(20px, 5vw, 28px)"
   },
 
   subtitle: {
@@ -659,7 +630,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
 
   divider: {
-    width: "48px",
+    width: "80px",
     height: "3px",
     borderRadius: "2px",
     background: "linear-gradient(90deg, #ffe500, #c47a00)",
@@ -688,7 +659,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
 
   warning: {
-    fontSize: "13px",
+    fontSize: "12px",
     color: "#9a7a40",
     marginTop: "10px",
     textAlign: "center"
