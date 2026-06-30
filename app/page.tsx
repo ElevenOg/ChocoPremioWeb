@@ -25,7 +25,7 @@ export default function Home() {
 >
   {/* Chocolate derretido fijo */}
 <div className="absolute top-0 left-0 w-full z-50 pointer-events-none"
-     style={{ top: "-20px" }}
+     style={{ top: "-40px" }}
    >
   <svg
     viewBox="0 0 100 40"
@@ -56,20 +56,22 @@ export default function Home() {
 </div>
 
       {/* HERO */}
-      <section className="flex min-h-[60vh] items-center justify-center px-5 py-10 mt-28">
+      <section className="flex min-h-[60vh] items-center justify-center px-5 py-10 mt-22">
         <div className="mx-auto w-full max-w-5xl text-center">
           <span className="inline-flex rounded-full border border-[#ead9b3] bg-white px-4 py-2 text-[10px] font-bold tracking-[0.2em] shadow-sm md:text-xs">
             ROMPE. DESCUBRE. GANA.
           </span>
 
-          <div
+          <img
+            src="/images/choco.png"
+            alt="Chocolate"
+            draggable={false}
             onClick={() => {
-              router.push("/dashboard/login");
-           }}
-           className="mt-5 text-6xl md:text-7xl cursor-pointer select-none transition-transform hover:scale-110 active:scale-95"
-         >
-           🍫
-       </div>
+             router.push("/dashboard/login");
+          }}
+          className="mt-5 w-15 md:w-20 mx-auto cursor-pointer select-none transition-transform hover:scale-110 active:scale-95"
+          
+         />
 
           <h1 className="mt-4 text-2xl font-black leading-none md:text-3xl">
             CHOCOPREMIO

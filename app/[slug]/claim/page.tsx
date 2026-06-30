@@ -10,8 +10,6 @@ import {
   useSearchParams
 } from "next/navigation";
 
-import confetti from "canvas-confetti";
-
 /**
  * COMPONENTE DE FONDO
  */
@@ -33,10 +31,82 @@ import {
   preloadSounds
 } from "../../components/AudioManager";
 
+/**
+ * NOTA SOBRE "canvas-confetti":
+ * Ya NO se importa de forma estática arriba del archivo (eso
+ * obligaba a descargarla antes de poder mostrar la tarjeta,
+ * sumando peso al primer render). Se carga de forma diferida
+ * (dynamic import) y se reutiliza UNA SOLA instancia creada
+ * con { useWorker: true }, para que el dibujo del confetti
+ * corra en un Web Worker y no compita por el hilo principal
+ * con las animaciones de entrada de la tarjeta — esto es lo
+ * que más se nota en celulares de gama baja.
+ */
+
 interface PrizeData {
   prize?: {
     name?: string;
   };
+}
+
+type ConfettiFireFn = (opts?: Record<string, unknown>) => void;
+
+let confettiFire: ConfettiFireFn | null = null;
+let confettiLoading: Promise<ConfettiFireFn | null> | null = null;
+
+async function getConfettiFire(): Promise<ConfettiFireFn | null> {
+
+  if (confettiFire) return confettiFire;
+
+  if (!confettiLoading) {
+    confettiLoading = import("canvas-confetti").then((mod) => {
+      const create = mod.default.create;
+      const instance = create(undefined, {
+        resize: true,
+        useWorker: true
+      });
+      confettiFire = instance;
+      return instance;
+    });
+  }
+
+  return confettiLoading;
+}
+
+/**
+ * Heurística simple para detectar un dispositivo de gama
+ * baja: pocos núcleos de CPU y/o poca RAM reportada por el
+ * navegador.
+ */
+function isLowEndDevice(): boolean {
+
+  if (typeof navigator === "undefined") return false;
+
+  const cores = (navigator as any).hardwareConcurrency;
+  const mem = (navigator as any).deviceMemory;
+
+  if (typeof mem === "number" && mem <= 4) return true;
+  if (typeof cores === "number" && cores <= 4) return true;
+
+  return false;
+}
+
+async function fireWelcomeConfetti() {
+
+  const fire = await getConfettiFire();
+  if (!fire) return;
+
+  const lowEnd = isLowEndDevice();
+
+  fire({
+    particleCount: lowEnd ? 40 : 70,
+    spread: 75,
+    startVelocity: 28,
+    scalar: 0.9,
+    colors: ["#ffe500", "#c47a00", "#4d3800", "#ffffff"],
+    origin: { y: 0.55 },
+    disableForReducedMotion: true
+  });
 }
 
 /**
@@ -203,8 +273,10 @@ export default function Claim() {
 
   /**
    * Confetti sutil de bienvenida, una sola vez.
-   * canvas-confetti corre en requestAnimationFrame,
-   * no bloquea el render ni traba la carga.
+   * Se dispara en requestAnimationFrame (un frame después de
+   * que la tarjeta ya pintó) y corre en un Web Worker, así
+   * que no compite con las animaciones de entrada ni traba
+   * el render en equipos modestos.
    */
   useEffect(() => {
 
@@ -213,13 +285,8 @@ export default function Claim() {
     welcomeFired.current = true;
 
     const id = setTimeout(() => {
-      confetti({
-        particleCount: 70,
-        spread: 75,
-        startVelocity: 28,
-        scalar: 0.9,
-        colors: ["#ffe500", "#c47a00", "#4d3800", "#ffffff"],
-        origin: { y: 0.55 }
+      requestAnimationFrame(() => {
+        fireWelcomeConfetti();
       });
     }, 250);
 
@@ -228,11 +295,14 @@ export default function Claim() {
   }, [loading]);
 
   /**
-   * Mostrar en caja — SIN CAMBIOS DE LÓGICA
+   * Mostrar en caja.
+   * El sonido ya no se espera (await) antes de actualizar el
+   * estado: es decorativo y no debería demorar la respuesta
+   * visual al tap del usuario.
    */
-  const handleRedeem = useCallback(async () => {
+  const handleRedeem = useCallback(() => {
 
-    await playSound("click");
+    playSound("click");
 
     setRedeemed(true);
 
@@ -245,28 +315,28 @@ export default function Claim() {
   /**
    * Abrir modal finalizar
    */
-  const handleFinish = useCallback(async () => {
-    await playSound("click");
+  const handleFinish = useCallback(() => {
+    playSound("click");
     setShowConfirm(true);
   }, []);
 
   /**
    * Cancelar modal
    */
-  const handleCancel = useCallback(async () => {
-    await playSound("click");
+  const handleCancel = useCallback(() => {
+    playSound("click");
     setShowConfirm(false);
   }, []);
 
   /**
    * Finalizar y limpiar — SIN CAMBIOS DE LÓGICA
    */
-  const handleConfirmFinish = useCallback(async () => {
+  const handleConfirmFinish = useCallback(() => {
 
     if (submitting) return;
     setSubmitting(true);
 
-    await playSound("click");
+    playSound("click");
 
     if (sessionId) {
       sessionStorage.removeItem(`retry_${sessionId}`);
@@ -296,7 +366,7 @@ export default function Claim() {
     <ChocolateBackground>
 
       {/* Partículas flotantes — MISMO patrón del Intro,
-          pero con 🎁 en vez de 🍫 */}
+          pero con 🎁 en vez de 🍫. 100% CSS, sin costo de JS. */}
       <div
         style={{
           position: "fixed",
@@ -346,34 +416,16 @@ export default function Claim() {
           style={styles.card}
         >
 
-          {/* Logo + halo — MISMO patrón del Intro */}
+          {/* Logo + halo — antes animados con framer-motion en
+              loop infinito (JS recalculando cada frame). Ahora
+              son animaciones CSS transform-only, mucho más
+              livianas y que el navegador puede correr en el
+              hilo de composición en vez del hilo principal. */}
           <div style={styles.logoWrapper}>
-            <motion.div
-              style={styles.halo}
-              animate={{
-                scale: [1, 1.15, 1],
-                opacity: [0.3, 0.55, 0.3]
-              }}
-              transition={{
-                duration: 2.8,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-            />
-            <motion.div
-              style={styles.logoEmoji}
-              animate={{
-                y: [0, -8, 0],
-                rotate: [-1, 1, -1]
-              }}
-              transition={{
-                duration: 3.5,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-            >
+            <div className="claim-halo" style={styles.halo} />
+            <div className="claim-logo-float" style={styles.logoEmoji}>
               🎁
-            </motion.div>
+            </div>
           </div>
 
           <motion.h1
@@ -442,25 +494,7 @@ export default function Claim() {
               }}
             >
               {canFinish && (
-                <motion.span
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "55%",
-                    height: "100%",
-                    background:
-                      "linear-gradient(90deg, transparent, rgba(255,229,0,0.3), transparent)",
-                    zIndex: 0
-                  }}
-                  animate={{ x: ["-100%", "280%"] }}
-                  transition={{
-                    duration: 1.8,
-                    repeat: Infinity,
-                    repeatDelay: 1.4,
-                    ease: "easeInOut"
-                  }}
-                />
+                <span className="claim-button-shine" style={styles.buttonShine} />
               )}
               <span style={{ position: "relative", zIndex: 1 }}>
                 FINALIZAR
@@ -564,6 +598,45 @@ export default function Claim() {
           90%  { opacity: 0.6; }
           100% { transform: translateY(-105vh) rotate(20deg); opacity: 0; }
         }
+
+        @keyframes claimHaloPulse {
+          0%, 100% { transform: scale(1); opacity: 0.3; }
+          50%      { transform: scale(1.15); opacity: 0.55; }
+        }
+
+        .claim-halo {
+          animation: claimHaloPulse 2.8s ease-in-out infinite;
+          will-change: transform, opacity;
+        }
+
+        @keyframes claimLogoFloat {
+          0%, 100% { transform: translateY(0) rotate(-1deg); }
+          50%      { transform: translateY(-8px) rotate(1deg); }
+        }
+
+        .claim-logo-float {
+          animation: claimLogoFloat 3.5s ease-in-out infinite;
+          will-change: transform;
+        }
+
+        @keyframes claimButtonShine {
+          0%       { transform: translateX(-100%); opacity: 1; }
+          56%      { transform: translateX(280%); opacity: 1; }
+          57%, 100%{ transform: translateX(280%); opacity: 0; }
+        }
+
+        .claim-button-shine {
+          animation: claimButtonShine 3.2s ease-in-out infinite;
+          will-change: transform;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .claim-halo,
+          .claim-logo-float,
+          .claim-button-shine {
+            animation: none !important;
+          }
+        }
       `}</style>
 
     </ChocolateBackground>
@@ -613,7 +686,8 @@ const styles: {
     position: "relative",
     zIndex: 2,
     userSelect: "none",
-    lineHeight: 1
+    lineHeight: 1,
+    marginTop: "-10px",
   },
 
   title: {
@@ -636,7 +710,7 @@ const styles: {
   prizeBox: {
     fontSize: "clamp(12px, 3vw, 15px)",
     fontWeight: 800,
-    marginBottom: "16px",
+    marginBottom: "10px",
     padding: "13px",
     borderRadius: "16px",
     background: "#fff4c7",
@@ -651,7 +725,7 @@ const styles: {
     height: "3px",
     borderRadius: "2px",
     background: "linear-gradient(90deg, #ffe500, #c47a00)",
-    marginBottom: "12px"
+    marginBottom: "10px"
   },
 
   steps: {
@@ -687,6 +761,17 @@ const styles: {
     boxShadow: "0 6px 20px rgba(77,56,0,0.35)"
   },
 
+  buttonShine: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "55%",
+    height: "100%",
+    background:
+      "linear-gradient(90deg, transparent, rgba(255,229,0,0.3), transparent)",
+    zIndex: 0
+  },
+
   warning: {
     fontSize: "12px",
     color: "#9a7a40",
@@ -695,7 +780,8 @@ const styles: {
   },
 
   termsBox: {
-    marginTop: "18px",
+    marginTop: "10px",
+    marginBottom: "-10px",
     background: "#f5f1eb",
     padding: "12px 14px",
     borderRadius: "12px",

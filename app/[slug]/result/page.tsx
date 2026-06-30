@@ -35,13 +35,24 @@ import {
 
 /**
  * NOTA SOBRE "canvas-confetti":
- * Ya NO se importa de forma estática arriba del archivo.
- * Antes se descargaba esa librería SIEMPRE, incluso para
- * quienes pierden o solo tienen un reintento (donde nunca
- * se usa). Ahora se carga de forma diferida (más abajo, en
- * fireConfetti) solo cuando realmente hay una celebración,
- * y además se precarga en paralelo durante el "suspenso"
- * para que esté lista al instante cuando se revela el premio.
+ * Sigue sin importarse de forma estática arriba del archivo
+ * (quienes pierden o solo tienen un reintento nunca la
+ * descargan). Lo nuevo es CÓMO se usa una vez cargada:
+ *
+ * 1. Se crea UNA SOLA instancia reutilizable con
+ *    confetti.create(..., { useWorker: true }). Antes, cada
+ *    llamada a confetti() creaba un <canvas> nuevo y corría
+ *    su propio loop de animación en el hilo principal; en un
+ *    celular de gama baja, lanzar dos ráfagas (tier "high")
+ *    significaba DOS canvas + DOS loops compitiendo con las
+ *    animaciones de framer-motion al mismo tiempo, y eso es
+ *    lo que se sentía "trabado". Con useWorker:true, el
+ *    dibujo del confetti corre en un Web Worker (OffscreenCanvas)
+ *    y deja libre el hilo principal.
+ * 2. Se respeta prefers-reduced-motion (disableForReducedMotion)
+ *    y se detecta heurísticamente un dispositivo de gama baja
+ *    (pocos núcleos / poca RAM) para reducir cantidad de
+ *    partículas y evitar la doble ráfaga en esos casos.
  */
 
 type PrizeType =
@@ -254,64 +265,133 @@ function getRetryPool(prizes: Prize[]) {
 }
 
 /**
+ * Heurística simple para detectar un dispositivo de gama
+ * baja: pocos núcleos de CPU y/o poca RAM reportada por el
+ * navegador. No es perfecta (no todos los navegadores
+ * exponen deviceMemory), pero alcanza para decidir si vale
+ * la pena recortar partículas/ráfagas.
+ */
+function isLowEndDevice(): boolean {
+
+  if (typeof navigator === "undefined") return false;
+
+  const cores = (navigator as any).hardwareConcurrency;
+  const mem = (navigator as any).deviceMemory;
+
+  if (typeof mem === "number" && mem <= 4) return true;
+  if (typeof cores === "number" && cores <= 4) return true;
+
+  return false;
+}
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Instancia ÚNICA y reutilizable de canvas-confetti.
+ * Se crea una sola vez (con su propio <canvas> y, si el
+ * navegador lo soporta, su propio Web Worker) y se reutiliza
+ * en todas las ráfagas de la sesión, en vez de crear un
+ * <canvas> nuevo por cada llamada como ocurría antes.
+ */
+type ConfettiFireFn = (opts?: Record<string, unknown>) => void;
+
+let confettiFire: ConfettiFireFn | null = null;
+let confettiLoading: Promise<ConfettiFireFn | null> | null = null;
+
+async function getConfettiFire(): Promise<ConfettiFireFn | null> {
+
+  if (confettiFire) return confettiFire;
+
+  if (!confettiLoading) {
+    confettiLoading = import("canvas-confetti").then((mod) => {
+      const create = mod.default.create;
+      const instance = create(undefined, {
+        resize: true,
+        useWorker: true
+      });
+      confettiFire = instance;
+      return instance;
+    });
+  }
+
+  return confettiLoading;
+}
+
+/**
  * Lanza confetti escalado según el "tier" del premio.
- * - high  → doble ráfaga dorada, mucha cantidad
+ * - high  → doble ráfaga dorada (solo en dispositivos normales)
  * - mid   → ráfaga única, cantidad media
  * - low   → ráfaga corta y sutil
  *
- * "canvas-confetti" se importa de forma DIFERIDA (dynamic
- * import) justo aquí, no arriba del archivo. Así, quienes
- * pierden o solo obtienen un reintento nunca descargan esta
- * librería. Para quienes ganan, el módulo normalmente ya
- * está precargado desde el inicio del "suspenso" (ver
- * startReveal), así que esta importación resuelve al
- * instante, sin demora perceptible.
+ * En dispositivos de gama baja o con "reducir movimiento"
+ * activado, se recortan las partículas y se evita la segunda
+ * ráfaga del tier alto, para no sumar carga al hilo principal
+ * justo en el momento más importante de la experiencia.
  */
 async function fireConfetti(tier: "low" | "mid" | "high" | "neutral") {
 
   if (tier === "neutral") return;
 
-  const { default: confetti } = await import("canvas-confetti");
+  const fire = await getConfettiFire();
+  if (!fire) return;
+
+  const lowEnd = isLowEndDevice();
+  const reduced = prefersReducedMotion();
+
+  const base = {
+    disableForReducedMotion: true,
+    origin: { y: 0.6 }
+  };
 
   if (tier === "low") {
-    confetti({
-      particleCount: 60,
-      spread: 70,
-      startVelocity: 28,
-      origin: { y: 0.6 }
+    fire({
+      ...base,
+      particleCount: lowEnd ? 32 : 55,
+      spread: 65,
+      startVelocity: 26
     });
     return;
   }
 
   if (tier === "mid") {
-    confetti({
-      particleCount: 110,
-      spread: 85,
-      startVelocity: 32,
-      origin: { y: 0.6 }
+    fire({
+      ...base,
+      particleCount: lowEnd ? 55 : 95,
+      spread: 80,
+      startVelocity: 30
     });
     return;
   }
 
-  // high: ráfaga dorada doble, más espectacular
-  confetti({
-    particleCount: 160,
-    spread: 100,
-    startVelocity: 38,
-    colors: ["#ffd84d", "#e6b800", "#fff4cc", "#ffffff"],
-    origin: { y: 0.6 }
+  // high: ráfaga dorada, más espectacular en equipos que lo soportan
+  fire({
+    ...base,
+    particleCount: lowEnd ? 75 : 140,
+    spread: 95,
+    startVelocity: 34,
+    colors: ["#ffd84d", "#e6b800", "#fff4cc", "#ffffff"]
   });
 
-  setTimeout(() => {
-    confetti({
-      particleCount: 90,
-      spread: 120,
-      startVelocity: 45,
-      scalar: 0.9,
-      colors: ["#ffd84d", "#e6b800", "#ffffff"],
-      origin: { y: 0.5 }
-    });
-  }, 220);
+  if (!lowEnd && !reduced) {
+    setTimeout(() => {
+      fire({
+        ...base,
+        particleCount: 55,
+        spread: 110,
+        startVelocity: 40,
+        scalar: 0.9,
+        colors: ["#ffd84d", "#e6b800", "#ffffff"],
+        origin: { y: 0.5 }
+      });
+    }, 200);
+  }
 }
 
 /**
@@ -371,12 +451,11 @@ export default function Result() {
 
   /**
    * Fase del reveal:
-   * "idle"    -> nada
-   * "suspense" -> parpadeo breve antes de revelar (solo WIN)
+   * "idle"     -> nada
    * "revealed" -> premio mostrado
    */
   const [revealPhase, setRevealPhase] =
-    useState<"idle" | "suspense" | "revealed">("idle");
+    useState<"idle" | "revealed">("idle");
 
   const [result, setResult] = useState<ResultData | null>(null);
 
@@ -435,9 +514,12 @@ export default function Result() {
 
   /**
    * Sonidos y confetti — SOLO PRIMERA VEZ.
-   * playWin y fireConfetti ya no se esperan en secuencia:
-   * se disparan en paralelo, ya que ambos son efectos
-   * independientes entre sí.
+   * El confetti se dispara en el siguiente frame
+   * (requestAnimationFrame), no en el mismo tick en que React
+   * acaba de montar/animar la tarjeta de resultado. Eso le da
+   * al navegador la oportunidad de pintar la tarjeta primero,
+   * en vez de competir por el hilo principal con 6 animaciones
+   * de framer-motion arrancando a la vez.
    */
   const runEffects = useCallback((prize: Prize) => {
 
@@ -461,7 +543,10 @@ export default function Result() {
     }
 
     playWin();
-    fireConfetti(prizePresentation[prize.type].tier);
+
+    requestAnimationFrame(() => {
+      fireConfetti(prizePresentation[prize.type].tier);
+    });
 
   }, [sessionId, playLose, playWin]);
 
@@ -518,35 +603,23 @@ export default function Result() {
 
           setLoading(false);
 
+          /**
+           * El premio se revela de una vez, sin animación de
+           * suspenso previa. Si el premio es una celebración
+           * (no "lose"/"retry"), se precarga igual la instancia
+           * de confetti, para que la primera ráfaga salga sin
+           * demora.
+           */
           const isCelebration =
             prize.type !== "lose" && prize.type !== "retry";
 
           if (isCelebration) {
-
-            /**
-             * Precarga "canvas-confetti" EN PARALELO a los
-             * 900ms de suspenso. Para cuando se revele el
-             * premio, el módulo ya estará descargado y listo,
-             * así que el confetti aparece al instante.
-             */
-            import("canvas-confetti").catch(() => {});
-
-            setRevealPhase("suspense");
-
-            trackTimeout(() => {
-              setShow(true);
-              setRevealPhase("revealed");
-              runEffects(prize);
-            }, 900);
-
-          } else {
-
-            trackTimeout(() => {
-              setShow(true);
-              setRevealPhase("revealed");
-              runEffects(prize);
-            }, 300);
+            getConfettiFire().catch(() => {});
           }
+
+          setShow(true);
+          setRevealPhase("revealed");
+          runEffects(prize);
         };
 
         /**
@@ -772,13 +845,6 @@ export default function Result() {
 
     <ChocolateBackground>
 
-      {/* Fase de suspenso: anticipación breve antes del reveal */}
-      <AnimatePresence>
-        {revealPhase === "suspense" && (
-          <SuspenseSpinner key="suspense" />
-        )}
-      </AnimatePresence>
-
       <AnimatePresence>
         {show && (
 
@@ -973,76 +1039,21 @@ export default function Result() {
           will-change: transform;
         }
 
-        @keyframes suspenseIconPulse {
-          0%,
-          100% {
-            transform: scale(1) rotate(0deg);
+        /**
+         * Si el usuario tiene "reducir movimiento" activado en
+         * su sistema, se apagan las animaciones decorativas
+         * infinitas (no las de entrada, que son cortas y
+         * comunican estado).
+         */
+        @media (prefers-reduced-motion: reduce) {
+          .result-halo,
+          .button-shine {
+            animation: none !important;
           }
-          25% {
-            transform: scale(1.15) rotate(-8deg);
-          }
-          75% {
-            transform: scale(1.15) rotate(8deg);
-          }
-        }
-
-        .suspense-icon-spin {
-          animation: suspenseIconPulse 0.5s ease-in-out infinite;
-        }
-
-        @keyframes suspenseSymbolFade {
-          0%,
-          100% {
-            opacity: 0;
-          }
-          50% {
-            opacity: 1;
-          }
-        }
-
-        .suspense-symbol-fade {
-          animation: suspenseSymbolFade 0.5s ease-in-out infinite;
         }
       `}</style>
 
     </ChocolateBackground>
-  );
-}
-
-/**
- * Anticipación breve antes de revelar un premio ganador:
- * parpadeo tipo "sorteo" de pocos emojis. Ahora 100% CSS
- * (antes eran varios componentes de framer-motion animando
- * en simultáneo); esto importa especialmente aquí porque
- * coincide con el instante más importante de la experiencia:
- * el momento justo antes de revelar el premio.
- */
-function SuspenseSpinner() {
-
-  const symbols = ["🎁", "✨", "🍫", "⭐"];
-
-  return (
-    <motion.div
-      style={styles.suspenseWrap}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0, transition: { duration: 0.2 } }}
-    >
-      <div className="suspense-icon-spin" style={styles.suspenseIcon}>
-        {symbols.map((s, i) => (
-          <span
-            key={s}
-            className="suspense-symbol-fade"
-            style={{
-              ...styles.suspenseSymbol,
-              animationDelay: `${i * 0.125}s`
-            }}
-          >
-            {s === "🍫" ? <PrizeGlyph emoji={s} size={56} /> : s}
-          </span>
-        ))}
-      </div>
-    </motion.div>
   );
 }
 
@@ -1155,37 +1166,6 @@ const styles: {
     background:
       "linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)",
     zIndex: 0
-  },
-
-  suspenseWrap: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: "100%",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 10,
-    pointerEvents: "none"
-  },
-
-  suspenseIcon: {
-    position: "relative",
-    width: "90px",
-    height: "90px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center"
-  },
-
-  suspenseSymbol: {
-    position: "absolute",
-    fontSize: "56px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center"
   }
 
 };

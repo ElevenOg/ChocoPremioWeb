@@ -103,7 +103,7 @@ export default function DashboardLogin() {
       {/* Chocolate superior */}
       <div
         className="absolute top-0 left-0 w-full pointer-events-none"
-        style={{ top: "-20px" }}
+        style={{ top: "-40px" }}
       >
         <svg
           viewBox="0 0 100 40"
@@ -158,8 +158,9 @@ export default function DashboardLogin() {
       >
         <div
           style={{
-            fontSize: "clamp(60px,12vw,80px)",
-            marginTop: "20px",
+            fontSize: "clamp(50px, 10vw, 95px)",
+            marginTop: "-20px",
+            marginBottom: "-10px",
             transform: showCard
               ? "translateY(0)"
               : "translateY(-15px)",
@@ -173,7 +174,7 @@ export default function DashboardLogin() {
 
         <h1
           style={{
-            fontSize: "clamp(22px,5vw,28px)",
+            fontSize: "clamp(20px, 5vw, 28px)",
             fontWeight: 900,
             color: "#4d3800",
             marginTop: "10px",
@@ -185,8 +186,9 @@ export default function DashboardLogin() {
         <p
           style={{
             marginTop: "10px",
-            color: "#555",
-            fontSize: "15px",
+            marginBottom: "-10px",
+            color: "#7a6040",
+            fontSize: "14px",
           }}
         >
           Ingresa a tu panel de estadísticas
@@ -281,6 +283,7 @@ export default function DashboardLogin() {
         <p
           style={{
             marginTop: "15px",
+            marginBottom: "-10px",
             fontSize: "13px",
             color: "#777",
           }}
