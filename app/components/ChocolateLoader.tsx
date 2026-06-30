@@ -44,8 +44,13 @@ function ChocolateLoader({ isVisible = true }: ChocolateLoaderProps) {
             style={styles.glow}
           />
 
-          {/* Chocolate */}
-          <motion.div
+          {/* Chocolate: imagen real en vez de emoji, así se ve
+              idéntico en todos los dispositivos (el emoji 🍫
+              cambia de diseño según el sistema/navegador). */}
+          <motion.img
+            src="/images/choco.png"
+            alt="Cargando"
+            draggable={false}
             animate={{
               rotate: 360,
               y: [0, -8, 0]
@@ -65,9 +70,7 @@ function ChocolateLoader({ isVisible = true }: ChocolateLoaderProps) {
               }
             }}
             style={styles.chocolate}
-          >
-            🍫
-          </motion.div>
+          />
         </motion.div>
       )}
     </AnimatePresence>
@@ -104,8 +107,16 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   chocolate: {
-    fontSize: "clamp(55px,11vw,85px)",
+    // Mínimo (celular) 46px, preferido escala con el ancho
+    // de pantalla (8vw), máximo (PC/escritorio) 68px.
+    // Antes era clamp(55px,11vw,85px): se veía grande en PC
+    // y algo grande en celular. Si querés afinarlo más:
+    //  - subí el primer número para que en celular se vea más grande
+    //  - subí el último número para que en PC se vea más grande
+    width: "clamp(46px, 8vw, 68px)",
+    height: "auto",
     willChange: "transform",
-    userSelect: "none"
+    userSelect: "none",
+    pointerEvents: "none"
   }
 };

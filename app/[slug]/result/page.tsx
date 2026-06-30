@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -9,8 +9,6 @@ import {
   useParams,
   useSearchParams
 } from "next/navigation";
-
-import confetti from "canvas-confetti";
 
 import { supabase } from "@/lib/supabase";
 
@@ -34,6 +32,17 @@ import {
   playSound,
   preloadSounds
 } from "../../components/AudioManager";
+
+/**
+ * NOTA SOBRE "canvas-confetti":
+ * Ya NO se importa de forma estática arriba del archivo.
+ * Antes se descargaba esa librería SIEMPRE, incluso para
+ * quienes pierden o solo tienen un reintento (donde nunca
+ * se usa). Ahora se carga de forma diferida (más abajo, en
+ * fireConfetti) solo cuando realmente hay una celebración,
+ * y además se precarga en paralelo durante el "suspenso"
+ * para que esté lista al instante cuando se revela el premio.
+ */
 
 type PrizeType =
   | "lose"
@@ -66,6 +75,36 @@ interface ResultData {
   won: boolean;
 
   prize: Prize;
+}
+
+/**
+ * Accesos seguros a sessionStorage/localStorage.
+ * En modo incógnito o con restricciones del navegador,
+ * estas APIs pueden lanzar errores: con esto, la app nunca
+ * se rompe por eso, simplemente no persiste ese dato puntual.
+ */
+function safeGet(storage: Storage, key: string): string | null {
+  try {
+    return storage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSet(storage: Storage, key: string, value: string) {
+  try {
+    storage.setItem(key, value);
+  } catch {
+    /* noop */
+  }
+}
+
+function safeRemove(storage: Storage, key: string) {
+  try {
+    storage.removeItem(key);
+  } catch {
+    /* noop */
+  }
 }
 
 /**
@@ -219,12 +258,20 @@ function getRetryPool(prizes: Prize[]) {
  * - high  → doble ráfaga dorada, mucha cantidad
  * - mid   → ráfaga única, cantidad media
  * - low   → ráfaga corta y sutil
- * Usa requestAnimationFrame internamente (canvas-confetti),
- * así que no bloquea el hilo principal ni traba el render.
+ *
+ * "canvas-confetti" se importa de forma DIFERIDA (dynamic
+ * import) justo aquí, no arriba del archivo. Así, quienes
+ * pierden o solo obtienen un reintento nunca descargan esta
+ * librería. Para quienes ganan, el módulo normalmente ya
+ * está precargado desde el inicio del "suspenso" (ver
+ * startReveal), así que esta importación resuelve al
+ * instante, sin demora perceptible.
  */
-function fireConfetti(tier: "low" | "mid" | "high" | "neutral") {
+async function fireConfetti(tier: "low" | "mid" | "high" | "neutral") {
 
   if (tier === "neutral") return;
+
+  const { default: confetti } = await import("canvas-confetti");
 
   if (tier === "low") {
     confetti({
@@ -265,6 +312,39 @@ function fireConfetti(tier: "low" | "mid" | "high" | "neutral") {
       origin: { y: 0.5 }
     });
   }, 220);
+}
+
+/**
+ * Renderiza el glifo de un premio: si es el emoji de
+ * chocolate (🍫), usa la imagen real en su lugar para que
+ * se vea idéntico en todos los dispositivos (el emoji nativo
+ * cambia de diseño según el sistema/navegador). Para
+ * cualquier otro emoji, se muestra como texto normal
+ * (sin costo de red, ya que es una fuente del sistema).
+ */
+function PrizeGlyph({ emoji, size }: { emoji: string; size: number }) {
+
+  if (emoji === "🍫") {
+    return (
+      <img
+        src="/images/choco.png"
+        alt="Chocolate"
+        draggable={false}
+        style={{
+          width: size,
+          height: "auto",
+          userSelect: "none",
+          pointerEvents: "none"
+        }}
+      />
+    );
+  }
+
+  return (
+    <span style={{ fontSize: size, lineHeight: 1 }}>
+      {emoji}
+    </span>
+  );
 }
 
 export default function Result() {
@@ -324,47 +404,55 @@ export default function Result() {
   }, []);
 
   /**
-   * Precarga sonidos
+   * Precarga sonidos y la imagen de chocolate (por si esta
+   * pantalla llegara a ser la primera del flujo en pedirla;
+   * en el resto de los casos ya estará en caché del navegador).
    */
   useEffect(() => {
     preloadSounds();
+
+    const warmup = new window.Image();
+    warmup.src = "/images/choco.png";
   }, []);
 
   /**
-   * Sonidos centralizados — SIN CAMBIOS
+   * Sonidos centralizados.
+   * Ya no se esperan (await) antes de continuar: reproducir
+   * un sonido es decorativo y no debería retrasar ninguna
+   * otra acción (confetti, navegación, etc.).
    */
-  const playWin = useCallback(async () => {
-    await playSound("win");
+  const playWin = useCallback(() => {
+    playSound("win");
   }, []);
 
-  const playLose = useCallback(async () => {
-    await playSound("lose");
+  const playLose = useCallback(() => {
+    playSound("lose");
   }, []);
 
-  const playClick = useCallback(async () => {
-    await playSound("click");
+  const playClick = useCallback(() => {
+    playSound("click");
   }, []);
 
   /**
-   * Sonidos y confetti — SOLO PRIMERA VEZ
-   * Misma protección por sessionStorage que ya tenías,
-   * ahora con confetti escalado por tier.
+   * Sonidos y confetti — SOLO PRIMERA VEZ.
+   * playWin y fireConfetti ya no se esperan en secuencia:
+   * se disparan en paralelo, ya que ambos son efectos
+   * independientes entre sí.
    */
-  const runEffects = useCallback(async (prize: Prize) => {
+  const runEffects = useCallback((prize: Prize) => {
 
     if (!sessionId) return;
 
     const playedKey = `effects_played_${sessionId}`;
 
-    const alreadyPlayed =
-      sessionStorage.getItem(playedKey) === "true";
+    const alreadyPlayed = safeGet(sessionStorage, playedKey) === "true";
 
     if (alreadyPlayed) return;
 
-    sessionStorage.setItem(playedKey, "true");
+    safeSet(sessionStorage, playedKey, "true");
 
     if (prize.type === "lose") {
-      await playLose();
+      playLose();
       return;
     }
 
@@ -372,8 +460,7 @@ export default function Result() {
       return;
     }
 
-    await playWin();
-
+    playWin();
     fireConfetti(prizePresentation[prize.type].tier);
 
   }, [sessionId, playLose, playWin]);
@@ -391,12 +478,15 @@ export default function Result() {
         if (!sessionId) return;
 
         /**
-         * Obtener sesión
+         * Obtener sesión.
+         * Solo se piden las columnas que realmente se usan
+         * más abajo, en vez de "*" — menos datos para
+         * descargar, especialmente útil con internet lento.
          */
         const { data: session, error: sessionError } =
           await supabase
             .from("game_sessions")
-            .select("*")
+            .select("id, campaign_id, prize_id, won")
             .eq("id", sessionId)
             .single();
 
@@ -432,6 +522,14 @@ export default function Result() {
             prize.type !== "lose" && prize.type !== "retry";
 
           if (isCelebration) {
+
+            /**
+             * Precarga "canvas-confetti" EN PARALELO a los
+             * 900ms de suspenso. Para cuando se revele el
+             * premio, el módulo ya estará descargado y listo,
+             * así que el confetti aparece al instante.
+             */
+            import("canvas-confetti").catch(() => {});
 
             setRevealPhase("suspense");
 
@@ -478,7 +576,7 @@ export default function Result() {
          * Retry mode
          */
         const retryMode =
-          sessionStorage.getItem(`retry_${sessionId}`) === "true";
+          safeGet(sessionStorage, `retry_${sessionId}`) === "true";
 
         /**
          * Pool correcto
@@ -535,7 +633,7 @@ export default function Result() {
          * Limpiar retry
          */
         if (retryMode) {
-          sessionStorage.removeItem(`retry_${sessionId}`);
+          safeRemove(sessionStorage, `retry_${sessionId}`);
         }
 
         setResult(finalResult);
@@ -553,23 +651,33 @@ export default function Result() {
 
   /**
    * Acciones de los botones — SIN CAMBIOS DE LÓGICA
+   * (solo se deja de esperar al sonido antes de continuar,
+   * ya que es puramente decorativo).
    */
-  const handleFinish = useCallback(async () => {
+  const handleFinish = useCallback(() => {
 
     if (submitting) return;
     setSubmitting(true);
 
-    await playClick();
+    playClick();
 
     if (sessionId) {
-      sessionStorage.removeItem(`retry_${sessionId}`);
-      sessionStorage.removeItem(`effects_played_${sessionId}`);
-      sessionStorage.removeItem(`redeemed_${sessionId}`);
-      localStorage.removeItem(`prize_${sessionId}`);
+      safeRemove(sessionStorage, `retry_${sessionId}`);
+      safeRemove(sessionStorage, `effects_played_${sessionId}`);
+      safeRemove(sessionStorage, `redeemed_${sessionId}`);
+      try {
+        localStorage.removeItem(`prize_${sessionId}`);
+      } catch {
+        /* noop */
+      }
     }
 
-    sessionStorage.removeItem("redeemed");
-    localStorage.removeItem("prize");
+    safeRemove(sessionStorage, "redeemed");
+    try {
+      localStorage.removeItem("prize");
+    } catch {
+      /* noop */
+    }
 
     router.push("/");
 
@@ -580,12 +688,18 @@ export default function Result() {
     if (submitting || !sessionId) return;
     setSubmitting(true);
 
-    await playClick();
+    playClick();
 
-    sessionStorage.setItem(`retry_${sessionId}`, "true");
+    safeSet(sessionStorage, `retry_${sessionId}`, "true");
+    safeRemove(sessionStorage, `effects_played_${sessionId}`);
 
-    sessionStorage.removeItem(`effects_played_${sessionId}`);
-
+    /**
+     * Este "update" SÍ se espera antes de navegar: la pantalla
+     * de juego va a volver a leer esta sesión, así que el
+     * premio anterior debe quedar limpio en la base de datos
+     * antes de llegar ahí (a diferencia de otros casos, aquí
+     * el orden importa para la integridad del estado).
+     */
     await supabase
       .from("game_sessions")
       .update({
@@ -606,17 +720,32 @@ export default function Result() {
     if (submitting || !sessionId || !result) return;
     setSubmitting(true);
 
-    await playClick();
+    playClick();
 
-    await supabase
+    try {
+      localStorage.setItem(
+        `prize_${sessionId}`,
+        JSON.stringify(result)
+      );
+    } catch {
+      /* noop */
+    }
+
+    /**
+     * La navegación ya NO espera esta escritura: la pantalla
+     * de reclamo recibe el premio completo desde localStorage,
+     * así que no necesita que termine esta llamada para
+     * mostrarse correctamente. El registro en base de datos
+     * (para auditoría/back-office) sigue su curso en segundo
+     * plano sin demorar al usuario.
+     */
+    supabase
       .from("game_sessions")
       .update({ claimed_prize: true })
-      .eq("id", sessionId);
-
-    localStorage.setItem(
-      `prize_${sessionId}`,
-      JSON.stringify(result)
-    );
+      .eq("id", sessionId)
+      .then(({ error }) => {
+        if (error) console.error(error);
+      });
 
     router.push(`/${slug}/claim?session=${sessionId}`);
 
@@ -665,21 +794,15 @@ export default function Result() {
             style={styles.card}
           >
 
-            {/* Halo ambiental detrás del icono */}
+            {/* Halo ambiental detrás del icono — animación 100% CSS,
+                ya que esta tarjeta puede quedar en pantalla bastante
+                tiempo mientras el usuario decide qué hacer. */}
             {!isLose && (
-              <motion.div
+              <div
+                className="result-halo"
                 style={{
                   ...styles.halo,
                   background: presentation.halo
-                }}
-                animate={{
-                  scale: [1, 1.18, 1],
-                  opacity: [0.5, 0.85, 0.5]
-                }}
-                transition={{
-                  duration: 2.4,
-                  repeat: Infinity,
-                  ease: "easeInOut"
                 }}
               />
             )}
@@ -713,9 +836,7 @@ export default function Result() {
                     }
               }
             >
-              <span style={styles.icon}>
-                {result.prize.emoji}
-              </span>
+              <PrizeGlyph emoji={result.prize.emoji} size={60} />
             </motion.div>
 
             <motion.h1
@@ -800,16 +921,7 @@ export default function Result() {
                   onClick={handleClaim}
                 >
                   {!submitting && (
-                    <motion.span
-                      style={styles.buttonShine}
-                      animate={{ x: ["-120%", "220%"] }}
-                      transition={{
-                        duration: 1.6,
-                        repeat: Infinity,
-                        repeatDelay: 1.2,
-                        ease: "easeInOut"
-                      }}
-                    />
+                    <span className="button-shine" style={styles.buttonShine} />
                   )}
                   <span style={{ position: "relative", zIndex: 1 }}>
                     {submitting ? "UN MOMENTO..." : "RECLAMAR PREMIO"}
@@ -822,15 +934,88 @@ export default function Result() {
         )}
       </AnimatePresence>
 
+      <style jsx global>{`
+        @keyframes resultHaloPulse {
+          0%,
+          100% {
+            transform: translateX(-50%) scale(1);
+            opacity: 0.5;
+          }
+          50% {
+            transform: translateX(-50%) scale(1.18);
+            opacity: 0.85;
+          }
+        }
+
+        .result-halo {
+          animation: resultHaloPulse 2.4s ease-in-out infinite;
+          will-change: transform, opacity;
+        }
+
+        @keyframes buttonShineSlide {
+          0% {
+            transform: translateX(-120%);
+            opacity: 1;
+          }
+          57% {
+            transform: translateX(220%);
+            opacity: 1;
+          }
+          58%,
+          100% {
+            transform: translateX(220%);
+            opacity: 0;
+          }
+        }
+
+        .button-shine {
+          animation: buttonShineSlide 2.8s ease-in-out infinite;
+          will-change: transform;
+        }
+
+        @keyframes suspenseIconPulse {
+          0%,
+          100% {
+            transform: scale(1) rotate(0deg);
+          }
+          25% {
+            transform: scale(1.15) rotate(-8deg);
+          }
+          75% {
+            transform: scale(1.15) rotate(8deg);
+          }
+        }
+
+        .suspense-icon-spin {
+          animation: suspenseIconPulse 0.5s ease-in-out infinite;
+        }
+
+        @keyframes suspenseSymbolFade {
+          0%,
+          100% {
+            opacity: 0;
+          }
+          50% {
+            opacity: 1;
+          }
+        }
+
+        .suspense-symbol-fade {
+          animation: suspenseSymbolFade 0.5s ease-in-out infinite;
+        }
+      `}</style>
+
     </ChocolateBackground>
   );
 }
 
 /**
- * Anticipación breve antes de revelar un premio
- * ganador: parpadeo tipo "sorteo" de pocos emojis,
- * 100% CSS/transform — no recalcula layout, así que
- * no traba ni en dispositivos modestos.
+ * Anticipación breve antes de revelar un premio ganador:
+ * parpadeo tipo "sorteo" de pocos emojis. Ahora 100% CSS
+ * (antes eran varios componentes de framer-motion animando
+ * en simultáneo); esto importa especialmente aquí porque
+ * coincide con el instante más importante de la experiencia:
+ * el momento justo antes de revelar el premio.
  */
 function SuspenseSpinner() {
 
@@ -843,34 +1028,20 @@ function SuspenseSpinner() {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, transition: { duration: 0.2 } }}
     >
-      <motion.div
-        style={styles.suspenseIcon}
-        animate={{
-          scale: [1, 1.15, 1],
-          rotate: [0, -8, 8, 0]
-        }}
-        transition={{
-          duration: 0.5,
-          repeat: Infinity,
-          ease: "easeInOut"
-        }}
-      >
+      <div className="suspense-icon-spin" style={styles.suspenseIcon}>
         {symbols.map((s, i) => (
-          <motion.span
+          <span
             key={s}
-            style={styles.suspenseSymbol}
-            animate={{ opacity: [0, 1, 0] }}
-            transition={{
-              duration: 0.5,
-              repeat: Infinity,
-              delay: i * 0.125,
-              ease: "easeInOut"
+            className="suspense-symbol-fade"
+            style={{
+              ...styles.suspenseSymbol,
+              animationDelay: `${i * 0.125}s`
             }}
           >
-            {s}
-          </motion.span>
+            {s === "🍫" ? <PrizeGlyph emoji={s} size={56} /> : s}
+          </span>
         ))}
-      </motion.div>
+      </div>
     </motion.div>
   );
 }
@@ -943,11 +1114,6 @@ const styles: {
     willChange: "transform, opacity"
   },
 
-  icon: {
-    fontSize: "60px",
-    lineHeight: 1
-  },
-
   title: {
     fontSize: "22px",
     fontWeight: 900,
@@ -1016,7 +1182,10 @@ const styles: {
 
   suspenseSymbol: {
     position: "absolute",
-    fontSize: "56px"
-  },
-  
+    fontSize: "56px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  }
+
 };

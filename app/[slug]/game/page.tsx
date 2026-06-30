@@ -183,13 +183,23 @@ export default function Game() {
     preloadSounds();
 
     /**
-     * Precarga la imagen de partículas para que el navegador
-     * ya la tenga decodificada antes del primer toque. Sin esto,
-     * el primer golpe podría sentirse "trabado" mientras el
-     * navegador descarga/decodifica la imagen por primera vez.
+     * Precarga TODAS las imágenes del juego (partículas, chocolate
+     * y, sobre todo, el regalo) para que el navegador ya las tenga
+     * descargadas y decodificadas antes de necesitarlas.
+     *
+     * "gift.png" es la más importante de precargar: solo aparece
+     * en el instante exacto en que el usuario gana, que es el
+     * momento más importante de toda la experiencia. Si no está
+     * precargada, justo ahí podría haber un parpadeo o una pausa
+     * mientras el navegador la descarga por primera vez — el peor
+     * lugar posible para que se note una traba.
      */
-    const warmup = new window.Image();
-    warmup.src = "/images/parti.png";
+    ["/images/parti.png", "/images/choco.png", "/images/gift.png"].forEach(
+      (src) => {
+        const warmup = new window.Image();
+        warmup.src = src;
+      }
+    );
 
     /**
      * Prefetch de la pantalla de resultado para que la
