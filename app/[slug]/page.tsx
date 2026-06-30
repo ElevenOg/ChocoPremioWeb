@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams } from "next/navigation";
+import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import ChocolateLoader from "../components/ChocolateLoader";
 import ChocolateBackground from "../components/ChocolateBackground";
@@ -15,7 +16,11 @@ interface Commerce {
   social_url: string | null;
 }
 
-const StepChip = ({
+/* ---------------------------------------------------------
+   StepChip: memoizado para no re-renderizar si sus props
+   no cambian (evita renders innecesarios al escribir/clickear)
+--------------------------------------------------------- */
+const StepChip = memo(function StepChip({
   number,
   label,
   done,
@@ -27,70 +32,121 @@ const StepChip = ({
   done: boolean;
   locked?: boolean;
   onClick?: () => void;
-}) => (
-  <motion.div
-    onClick={onClick}
-    whileTap={onClick ? { scale: 0.97 } : {}}
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: "12px",
-      padding: "12px 14px",
-      borderRadius: "16px",
-      background: done
-        ? "rgba(77,56,0,0.1)"
-        : locked
-        ? "rgba(0,0,0,0.04)"
-        : "rgba(255,229,0,0.2)",
-      border: done
-        ? "1.5px solid #4d3800"
-        : locked
-        ? "1.5px solid rgba(0,0,0,0.1)"
-        : "1.5px solid #ffe500",
-      cursor: onClick ? "pointer" : "default",
-      opacity: locked ? 0.5 : 1,
-      transition: "all 0.25s ease",
-      WebkitTapHighlightColor: "transparent"
-    }}
-  >
-    <div style={{
-      width: "28px",
-      height: "28px",
-      borderRadius: "50%",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: "13px",
-      fontWeight: 800,
-      flexShrink: 0,
-      background: done ? "#4d3800" : locked ? "#ccc" : "#ffe500",
-      color: done ? "#fff" : locked ? "#fff" : "#4d3800",
-      transition: "all 0.3s ease"
-    }}>
-      {done ? "✓" : number}
-    </div>
+}) {
+  return (
+    <motion.div
+      onClick={onClick}
+      whileTap={onClick ? { scale: 0.97 } : {}}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        padding: "12px 14px",
+        borderRadius: "16px",
+        background: done
+          ? "rgba(77,56,0,0.1)"
+          : locked
+          ? "rgba(0,0,0,0.04)"
+          : "rgba(255,229,0,0.2)",
+        border: done
+          ? "1.5px solid #4d3800"
+          : locked
+          ? "1.5px solid rgba(0,0,0,0.1)"
+          : "1.5px solid #ffe500",
+        cursor: onClick ? "pointer" : "default",
+        opacity: locked ? 0.5 : 1,
+        transition: "all 0.25s ease",
+        WebkitTapHighlightColor: "transparent"
+      }}
+    >
+      <div
+        style={{
+          width: "28px",
+          height: "28px",
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "13px",
+          fontWeight: 800,
+          flexShrink: 0,
+          background: done ? "#4d3800" : locked ? "#ccc" : "#ffe500",
+          color: done ? "#fff" : locked ? "#fff" : "#4d3800",
+          transition: "all 0.3s ease"
+        }}
+      >
+        {done ? "✓" : number}
+      </div>
 
-    <span style={{
-      flex: 1,
-      textAlign: "left",
-      fontSize: "clamp(13px, 3.5vw, 15px)",
-      color: done ? "#4d3800" : locked ? "#999" : "#3a2800",
-      fontWeight: done ? 700 : 500,
-      transition: "all 0.25s ease"
-    }}>
-      {label}
-    </span>
-
-    {onClick && (
-      <span style={{ color: "#c47a00", fontSize: "16px", fontWeight: 700 }}>
-        →
+      <span
+        style={{
+          flex: 1,
+          textAlign: "left",
+          fontSize: "clamp(13px, 3.5vw, 15px)",
+          color: done ? "#4d3800" : locked ? "#999" : "#3a2800",
+          fontWeight: done ? 700 : 500,
+          transition: "all 0.25s ease"
+        }}
+      >
+        {label}
       </span>
-    )}
-  </motion.div>
-);
+
+      {onClick && (
+        <span style={{ color: "#c47a00", fontSize: "16px", fontWeight: 700 }}>
+          →
+        </span>
+      )}
+    </motion.div>
+  );
+});
+
+/* ---------------------------------------------------------
+   FloatingEmojis: decoración de fondo, 100% CSS (sin JS),
+   memoizada para que NUNCA se vuelva a renderizar cuando
+   cambie el estado del componente padre (accepted, followed, etc).
+--------------------------------------------------------- */
+const FloatingEmojis = memo(function FloatingEmojis() {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex: 0,
+        overflow: "hidden",
+        contain: "strict"
+      }}
+      aria-hidden="true"
+    >
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <span
+          key={i}
+          style={{
+            position: "absolute",
+            bottom: "-20px",
+            left: `${8 + i * 16}%`,
+            fontSize: i % 2 === 0 ? "20px" : "14px",
+            opacity: 0.15 + i * 0.02,
+            animationName: "floatUp",
+            animationDuration: `${5 + i * 0.9}s`,
+            animationDelay: `${i * 0.8}s`,
+            animationTimingFunction: "linear",
+            animationIterationCount: "infinite",
+            userSelect: "none",
+            willChange: "transform"
+          }}
+        >
+          🍫
+        </span>
+      ))}
+    </div>
+  );
+});
 
 export default function Intro() {
-
   useBlockBackNavigation();
 
   const [accepted, setAccepted] = useState<boolean>(false);
@@ -121,15 +177,28 @@ export default function Intro() {
     if (acceptedSession === "true") setAccepted(true);
   }, []);
 
+  /* -----------------------------------------------------------
+     Carga del comercio + sesión.
+     OPTIMIZACIÓN CLAVE: si el usuario ya tiene una sesión guardada
+     en este dispositivo, NO se consulta "campaigns" ni se inserta
+     en "game_sessions" → se ahorra 1-2 round trips a Supabase,
+     algo muy importante con internet lento o datos móviles.
+     También se piden solo las columnas necesarias (select puntual
+     en vez de "*") para reducir el peso de la respuesta.
+  ----------------------------------------------------------- */
   useEffect(() => {
+    let active = true;
+
     const loadCommerce = async () => {
       setLoading(true);
 
       const { data, error } = await supabase
         .from("commerces")
-        .select("*")
+        .select("id, slug, social_url")
         .eq("slug", params.slug)
         .maybeSingle();
+
+      if (!active) return;
 
       if (error || !data) {
         console.error(error);
@@ -140,30 +209,35 @@ export default function Intro() {
 
       setCommerce(data);
 
-      const { data: activeCampaign } = await supabase
-        .from("campaigns")
-        .select("*")
-        .eq("commerce_id", data.id)
-        .eq("active", true)
-        .single();
-
       const existingSessionId = sessionStorage.getItem("intro_session_id");
-
       if (existingSessionId) {
         setSessionId(existingSessionId);
         setLoading(false);
         return;
       }
 
+      const { data: activeCampaign } = await supabase
+        .from("campaigns")
+        .select("id")
+        .eq("commerce_id", data.id)
+        .eq("active", true)
+        .maybeSingle();
+
+      if (!active) return;
+
       const { data: sessionData, error: sessionError } = await supabase
         .from("game_sessions")
-        .insert([{
-          commerce_id: data.id,
-          campaign_id: activeCampaign?.id || null,
-          scanned_qr: true
-        }])
-        .select()
+        .insert([
+          {
+            commerce_id: data.id,
+            campaign_id: activeCampaign?.id || null,
+            scanned_qr: true
+          }
+        ])
+        .select("id")
         .single();
+
+      if (!active) return;
 
       if (sessionError) console.error(sessionError);
 
@@ -176,24 +250,28 @@ export default function Intro() {
     };
 
     loadCommerce();
+
+    return () => {
+      active = false;
+    };
   }, [params.slug]);
 
   useEffect(() => {
     if (!showModal || !scrollRef.current) return;
 
     const el = scrollRef.current;
-    const cleanups: ReturnType<typeof setTimeout>[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
 
     const t1 = setTimeout(() => {
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
       const t2 = setTimeout(() => {
         el.scrollTo({ top: 0, behavior: "smooth" });
       }, 700);
-      cleanups.push(t2);
+      timers.push(t2);
     }, 200);
 
-    cleanups.push(t1);
-    return () => cleanups.forEach(clearTimeout);
+    timers.push(t1);
+    return () => timers.forEach(clearTimeout);
   }, [showModal]);
 
   useEffect(() => {
@@ -229,37 +307,42 @@ export default function Intro() {
     sessionStorage.setItem("followed", "true");
 
     if (sessionId) {
+      // Fire-and-forget: no bloquea la UI esperando la respuesta de Supabase
       supabase
         .from("game_sessions")
         .update({ clicked_social: true })
         .eq("id", sessionId)
-        .then(({ error }) => { if (error) console.error(error); });
+        .then(({ error }) => {
+          if (error) console.error(error);
+        });
     }
   }, [followed, playClick, commerce, sessionId]);
 
-  const handleStartGame = useCallback(async () => {
+  /* -----------------------------------------------------------
+     OPTIMIZACIÓN: la navegación al juego ya NO espera a que
+     termine el "update" en Supabase. Esto hace que el cambio
+     de pantalla se sienta instantáneo incluso con internet lento;
+     el registro en base de datos sigue su curso en segundo plano.
+  ----------------------------------------------------------- */
+  const handleStartGame = useCallback(() => {
     if (startingGame) return;
     setStartingGame(true);
     playClick();
     setCardVisible(false);
 
-    try {
-      if (sessionId) {
-        await supabase
-          .from("game_sessions")
-          .update({ played: true })
-          .eq("id", sessionId);
-      }
-
-      navTimeout.current = setTimeout(() => {
-        router.push(`/${params.slug}/game?session=${sessionId}`);
-      }, 400);
-
-    } catch (error) {
-      console.error(error);
-      setStartingGame(false);
-      setCardVisible(true);
+    if (sessionId) {
+      supabase
+        .from("game_sessions")
+        .update({ played: true })
+        .eq("id", sessionId)
+        .then(({ error }) => {
+          if (error) console.error(error);
+        });
     }
+
+    navTimeout.current = setTimeout(() => {
+      router.push(`/${params.slug}/game?session=${sessionId}`);
+    }, 400);
   }, [startingGame, playClick, sessionId, router, params.slug]);
 
   const handleOpenTermsModal = useCallback(() => {
@@ -274,6 +357,8 @@ export default function Intro() {
     setShowModal(false);
   }, [playClick]);
 
+  const handleCloseModal = useCallback(() => setShowModal(false), []);
+
   const canPlay = accepted && followed && !startingGame;
 
   if (loading) return <ChocolateLoader />;
@@ -281,14 +366,16 @@ export default function Intro() {
   if (!commerce) {
     return (
       <ChocolateBackground>
-        <h1 style={{
-          color: "#4d3800",
-          fontSize: "clamp(18px, 4vw, 24px)",
-          fontWeight: "900",
-          textAlign: "center",
-          zIndex: 2,
-          letterSpacing: "1px"
-        }}>
+        <h1
+          style={{
+            color: "#4d3800",
+            fontSize: "clamp(18px, 4vw, 24px)",
+            fontWeight: "900",
+            textAlign: "center",
+            zIndex: 2,
+            letterSpacing: "1px"
+          }}
+        >
           NO DISPONIBLE
         </h1>
       </ChocolateBackground>
@@ -297,274 +384,267 @@ export default function Intro() {
 
   return (
     <ChocolateBackground>
+        <FloatingEmojis />
 
-      <div style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-        zIndex: 0,
-        overflow: "hidden"
-      }} aria-hidden="true">
-        {[...Array(6)].map((_, i) => (
-          <span key={i} style={{
-            position: "absolute",
-            bottom: "-20px",
-            left: `${8 + i * 16}%`,
-            fontSize: i % 2 === 0 ? "20px" : "14px",
-            opacity: 0.15 + i * 0.02,
-            animationName: "floatUp",
-            animationDuration: `${5 + i * 0.9}s`,
-            animationDelay: `${i * 0.8}s`,
-            animationTimingFunction: "linear",
-            animationIterationCount: "infinite",
-            userSelect: "none"
-          }}>
-            🍫
-          </span>
-        ))}
-      </div>
-
-      <AnimatePresence mode="wait">
-        {cardVisible && (
-          <motion.div
-            key="intro-card"
-            initial={{ scale: 0.82, opacity: 0, y: 60 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 1.05, opacity: 0, y: -40 }}
-            transition={{
-              type: "spring",
-              damping: 22,
-              stiffness: 160,
-              mass: 0.8
-            }}
-            style={styles.card}
-          >
-
-            <div style={styles.logoWrapper}>
-              <motion.div
-                style={styles.halo}
-                animate={{
-                  scale: [1, 1.15, 1],
-                  opacity: [0.3, 0.55, 0.3]
-                }}
-                transition={{
-                  duration: 2.8,
-                  repeat: Infinity,
-                  ease: "easeInOut"
-                }}
-              />
-              <motion.img
-                src="/images/choco.png"
-                alt="Chocolate"
-                style={styles.logoImage}
-                animate={{
-                  y: [0, -8, 0],
-                  rotate: [-1, 1, -1]
-                }}
-                transition={{
-                  duration: 3.5,
-                  repeat: Infinity,
-                  ease: "easeInOut"
-                }}
-                draggable={false}
-              />
-            </div>
-
-            <motion.h1
-              style={styles.title}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15, duration: 0.4 }}
-            >
-              ¡ROMPE Y GANA
-              <br />
-              <span style={styles.titleAccent}>TU PREMIO!</span>
-            </motion.h1>
-
-            <motion.p
-              style={styles.subtitle}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25, duration: 0.4 }}
-            >
-              Rompe el chocolate y descubre tu sorpresa
-            </motion.p>
-
+        <AnimatePresence mode="wait">
+          {cardVisible && (
             <motion.div
-              style={styles.divider}
-              initial={{ scaleX: 0, opacity: 0 }}
-              animate={{ scaleX: 1, opacity: 1 }}
-              transition={{ delay: 0.35, duration: 0.4 }}
-            />
-
-            <motion.div
-              style={styles.steps}
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4, duration: 0.4 }}
-            >
-              <StepChip
-                number={1}
-                label="Acepta los términos"
-                done={accepted}
-                onClick={handleOpenTermsModal}
-              />
-              <StepChip
-                number={2}
-                label="Síguenos en redes"
-                done={followed}
-                onClick={handleFollow}
-              />
-              <StepChip
-                number={3}
-                label="¡Empieza el juego!"
-                done={false}
-                locked={!canPlay}
-              />
-            </motion.div>
-
-            <motion.div
-              style={{ width: "100%" }}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5, duration: 0.4 }}
-            >
-              <motion.button
-                disabled={!canPlay}
-                onClick={handleStartGame}
-                whileTap={canPlay ? { scale: 0.96 } : {}}
-                style={{
-                  ...styles.button,
-                  opacity: canPlay ? 1 : 0.45,
-                  cursor: canPlay ? "pointer" : "not-allowed",
-                  position: "relative",
-                  overflow: "hidden"
-                }}
-              >
-                {canPlay && (
-                  <motion.span
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "55%",
-                      height: "100%",
-                      background:
-                        "linear-gradient(90deg, transparent, rgba(255,229,0,0.3), transparent)",
-                      zIndex: 0
-                    }}
-                    animate={{ x: ["-100%", "280%"] }}
-                    transition={{
-                      duration: 1.8,
-                      repeat: Infinity,
-                      repeatDelay: 1.4,
-                      ease: "easeInOut"
-                    }}
-                  />
-                )}
-                <span style={{ position: "relative", zIndex: 1 }}>
-                  {startingGame ? "CARGANDO" : " JUGAR AHORA"}
-                </span>
-              </motion.button>
-            </motion.div>
-
-            <AnimatePresence>
-              {!canPlay && (
-                <motion.p
-                  key="warning"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  style={styles.warning}
-                >
-                  {!accepted && !followed
-                    ? "Completa los pasos 1 y 2 para jugar"
-                    : !accepted
-                    ? "Acepta los términos primero"
-                    : "Síguenos en Instagram primero"}
-                </motion.p>
-              )}
-            </AnimatePresence>
-
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showModal && (
-          <motion.div
-            key="terms-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.22 }}
-            style={styles.modalOverlay}
-            onClick={() => setShowModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.75, opacity: 0, y: 50 }}
+              key="intro-card"
+              initial={{ scale: 0.82, opacity: 0, y: 60 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.75, opacity: 0, y: 50 }}
-              transition={{ type: "spring", damping: 20, stiffness: 200 }}
-              style={styles.modal}
-              onClick={(e) => e.stopPropagation()}
+              exit={{ scale: 1.05, opacity: 0, y: -40 }}
+              transition={{
+                type: "spring",
+                damping: 22,
+                stiffness: 160,
+                mass: 0.8
+              }}
+              style={styles.card}
             >
-              <div ref={scrollRef} style={styles.modalContent}>
-                <h3 style={styles.modalTitle}>Condiciones</h3>
-                <ul style={styles.modalList}>
-                  <li>• Juega solo en el punto</li>
-                  <li>• 1 intento por persona</li>
-                  <li>• +1 intento por compra</li>
-                  <li>• Máx. 2 intentos por persona</li>
-                  <li>• Resultado aleatorio</li>
-                  <li>• Premios con condiciones</li>
-                  <li>• No canjeable por dinero</li>
-                  <li>• No acumulable</li>
-                  <li>• Premios sujetos a disponibilidad</li>
-                  <li>• El premio debe validarse en el punto de atención</li>
-                  <li>• Redención válida únicamente el día de la participación</li>
-                </ul>
-                <h3 style={styles.modalTitle}>Términos</h3>
-                <ul style={styles.modalList}>
-                  <li>• Participar implica aceptar términos</li>
-                  <li>• Es una actividad promocional</li>
-                  <li>• La organización podrá verificar participaciones duplicadas</li>
-                  <li>• Cualquier intento de manipulación anula la participación</li>
-                  <li>• En caso de fallas técnicas, la dinámica podrá ser ajustada</li>
-                </ul>
-                <p style={styles.modalNote}>
-                  🎥 Puede ser grabado con fines promocionales
-                </p>
+              {/* Logo: halo + flotación 100% CSS (sin JS, va al compositor) */}
+              <div style={styles.logoWrapper}>
+                <div style={styles.halo} aria-hidden="true" />
+                <div style={styles.logoImageBox} className="choco-float">
+                  <Image
+                    src="/images/choco.png"
+                    alt="Chocolate"
+                    fill
+                    sizes="(max-width: 480px) 95px, 95px"
+                    style={{ objectFit: "contain" }}
+                    priority
+                    draggable={false}
+                  />
+                </div>
               </div>
-              <button style={styles.modalButton} onClick={handleAcceptTerms}>
-                Acepto los términos
-              </button>
+
+              <motion.h1
+                style={styles.title}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15, duration: 0.4 }}
+              >
+                ¡ROMPE Y GANA
+                <br />
+                <span style={styles.titleAccent}>TU PREMIO!</span>
+              </motion.h1>
+
+              <motion.p
+                style={styles.subtitle}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25, duration: 0.4 }}
+              >
+                Rompe el chocolate y descubre tu sorpresa
+              </motion.p>
+
+              <motion.div
+                style={styles.divider}
+                initial={{ scaleX: 0, opacity: 0 }}
+                animate={{ scaleX: 1, opacity: 1 }}
+                transition={{ delay: 0.35, duration: 0.4 }}
+              />
+
+              <motion.div
+                style={styles.steps}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4, duration: 0.4 }}
+              >
+                <StepChip
+                  number={1}
+                  label="Acepta los términos"
+                  done={accepted}
+                  onClick={handleOpenTermsModal}
+                />
+                <StepChip
+                  number={2}
+                  label="Síguenos en redes"
+                  done={followed}
+                  onClick={handleFollow}
+                />
+                <StepChip number={3} label="¡Empieza el juego!" done={false} locked={!canPlay} />
+              </motion.div>
+
+              <motion.div
+                style={{ width: "100%" }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5, duration: 0.4 }}
+              >
+                <motion.button
+                  disabled={!canPlay}
+                  onClick={handleStartGame}
+                  whileTap={canPlay ? { scale: 0.96 } : {}}
+                  style={{
+                    ...styles.button,
+                    opacity: canPlay ? 1 : 0.45,
+                    cursor: canPlay ? "pointer" : "not-allowed",
+                    position: "relative",
+                    overflow: "hidden"
+                  }}
+                >
+                  {canPlay && (
+                    <span style={styles.shimmer} aria-hidden="true" />
+                  )}
+                  <span style={{ position: "relative", zIndex: 1 }}>
+                    {startingGame ? "CARGANDO" : " JUGAR AHORA"}
+                  </span>
+                </motion.button>
+              </motion.div>
+
+              <AnimatePresence>
+                {!canPlay && (
+                  <motion.p
+                    key="warning"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    style={styles.warning}
+                  >
+                    {!accepted && !followed
+                      ? "Completa los pasos 1 y 2 para jugar"
+                      : !accepted
+                      ? "Acepta los términos primero"
+                      : "Síguenos en Instagram primero"}
+                  </motion.p>
+                )}
+              </AnimatePresence>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
 
-      <style jsx global>{`
-        @keyframes floatUp {
-          0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
-          10%  { opacity: 1; }
-          90%  { opacity: 0.6; }
-          100% { transform: translateY(-105vh) rotate(20deg); opacity: 0; }
-        }
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-track { background: #e6d3a3; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb { background: #4d3800; border-radius: 10px; }
-      `}</style>
+        <AnimatePresence>
+          {showModal && (
+            <motion.div
+              key="terms-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
+              style={styles.modalOverlay}
+              onClick={handleCloseModal}
+            >
+              <motion.div
+                initial={{ scale: 0.75, opacity: 0, y: 50 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.75, opacity: 0, y: 50 }}
+                transition={{ type: "spring", damping: 20, stiffness: 200 }}
+                style={styles.modal}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div ref={scrollRef} style={styles.modalContent}>
+                  <h3 style={styles.modalTitle}>Condiciones</h3>
+                  <ul style={styles.modalList}>
+                    <li>• Juega solo en el punto</li>
+                    <li>• 1 intento por persona</li>
+                    <li>• +1 intento por compra</li>
+                    <li>• Máx. 2 intentos por persona</li>
+                    <li>• Resultado aleatorio</li>
+                    <li>• Premios con condiciones</li>
+                    <li>• No canjeable por dinero</li>
+                    <li>• No acumulable</li>
+                    <li>• Premios sujetos a disponibilidad</li>
+                    <li>• El premio debe validarse en el punto de atención</li>
+                    <li>• Redención válida únicamente el día de la participación</li>
+                  </ul>
+                  <h3 style={styles.modalTitle}>Términos</h3>
+                  <ul style={styles.modalList}>
+                    <li>• Participar implica aceptar términos</li>
+                    <li>• Es una actividad promocional</li>
+                    <li>• La organización podrá verificar participaciones duplicadas</li>
+                    <li>• Cualquier intento de manipulación anula la participación</li>
+                    <li>• En caso de fallas técnicas, la dinámica podrá ser ajustada</li>
+                  </ul>
+                  <p style={styles.modalNote}>
+                    🎥 Puede ser grabado con fines promocionales
+                  </p>
+                </div>
+                <button style={styles.modalButton} onClick={handleAcceptTerms}>
+                  Acepto los términos
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-    </ChocolateBackground>
+        <style jsx global>{`
+          @keyframes floatUp {
+            0% {
+              transform: translateY(0) rotate(0deg);
+              opacity: 0;
+            }
+            10% {
+              opacity: 1;
+            }
+            90% {
+              opacity: 0.6;
+            }
+            100% {
+              transform: translateY(-105vh) rotate(20deg);
+              opacity: 0;
+            }
+          }
+
+          @keyframes haloPulse {
+            0%,
+            100% {
+              transform: scale(1);
+              opacity: 0.3;
+            }
+            50% {
+              transform: scale(1.15);
+              opacity: 0.55;
+            }
+          }
+
+          @keyframes logoFloat {
+            0%,
+            100% {
+              transform: translateY(0) rotate(-1deg);
+            }
+            50% {
+              transform: translateY(-8px) rotate(1deg);
+            }
+          }
+
+          @keyframes shimmerSlide {
+            0% {
+              transform: translateX(-100%);
+              opacity: 1;
+            }
+            55% {
+              transform: translateX(280%);
+              opacity: 1;
+            }
+            56%,
+            100% {
+              transform: translateX(280%);
+              opacity: 0;
+            }
+          }
+
+          .choco-float {
+            animation: logoFloat 3.5s ease-in-out infinite;
+            will-change: transform;
+          }
+
+          ::-webkit-scrollbar {
+            width: 5px;
+          }
+          ::-webkit-scrollbar-track {
+            background: #e6d3a3;
+            border-radius: 10px;
+          }
+          ::-webkit-scrollbar-thumb {
+            background: #4d3800;
+            border-radius: 10px;
+          }
+        `}</style>
+      </ChocolateBackground>
   );
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
-
   card: {
     width: "100%",
     maxWidth: "400px",
@@ -595,16 +675,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     height: "clamp(120px, 28vw, 160px)",
     borderRadius: "50%",
     background: "radial-gradient(circle, rgba(255,229,0,0.55) 0%, transparent 70%)",
-    zIndex: 1
+    zIndex: 1,
+    animation: "haloPulse 2.8s ease-in-out infinite",
+    willChange: "transform, opacity"
   },
 
-  logoImage: {
-    width: "clamp(50px, 10vw, 95px)",
-    height: "auto",
+  logoImageBox: {
     position: "relative",
+    width: "clamp(50px, 10vw, 95px)",
+    height: "clamp(50px, 10vw, 95px)",
     zIndex: 2,
-    userSelect: "none",
-    pointerEvents: "none"
+    marginTop: "-10px"
   },
 
   title: {
@@ -612,7 +693,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 900,
     color: "#4d3800",
     marginBottom: "8px",
-    marginTop: "4px",
     lineHeight: 1.2,
     letterSpacing: "-0.5px"
   },
@@ -625,7 +705,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   subtitle: {
     fontSize: "clamp(13px, 3.5vw, 15px)",
     color: "#7a6040",
-    marginBottom: "16px",
+    marginBottom: "8px",
     marginTop: "0px"
   },
 
@@ -634,7 +714,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     height: "3px",
     borderRadius: "2px",
     background: "linear-gradient(90deg, #ffe500, #c47a00)",
-    marginBottom: "18px"
+    marginBottom: "10px"
   },
 
   steps: {
@@ -642,7 +722,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    marginBottom: "20px"
+    marginBottom: "10px"
   },
 
   button: {
@@ -658,10 +738,23 @@ const styles: { [key: string]: React.CSSProperties } = {
     boxShadow: "0 6px 20px rgba(77,56,0,0.35)"
   },
 
+  shimmer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "55%",
+    height: "100%",
+    background: "linear-gradient(90deg, transparent, rgba(255,229,0,0.3), transparent)",
+    zIndex: 0,
+    animation: "shimmerSlide 3.2s ease-in-out infinite",
+    willChange: "transform"
+  },
+
   warning: {
     fontSize: "12px",
     color: "#9a7a40",
     marginTop: "10px",
+    marginBottom: "-10px",
     textAlign: "center"
   },
 
@@ -672,7 +765,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     width: "100%",
     height: "100%",
     background: "rgba(0,0,0,0.55)",
-    backdropFilter: "blur(6px)",
+    backdropFilter: "blur(4px)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",

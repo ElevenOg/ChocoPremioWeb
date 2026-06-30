@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, memo } from "react";
 
-import { motion, useAnimation } from "framer-motion";
+import { motion } from "framer-motion";
 
 import {
   useRouter,
@@ -27,35 +27,59 @@ import {
 } from "../../components/AudioManager";
 
 /**
+ * Tipo para permitir variables CSS personalizadas
+ * (--dx, --dy, --rot, --s) en el style inline,
+ * sin perder el tipado del resto de propiedades.
+ */
+type CSSVars = React.CSSProperties & { [key: string]: string | number };
+
+interface CrumbData {
+  id: number;
+  dx: number;
+  dy: number;
+  rot: number;
+  scale: number;
+}
+
+/**
  * Partícula individual memorizada.
- * Evita que React vuelva a montar/diffear
- * las partículas viejas cuando llegan nuevas.
+ *
+ * OPTIMIZACIÓN: ya NO usa framer-motion para animarse.
+ * Cada partícula se mueve con una animación CSS pura
+ * (@keyframes crumbFly), que el navegador ejecuta en el
+ * hilo de composición (GPU) y no en el hilo de JavaScript.
+ * Esto es clave porque en este juego se generan partículas
+ * en CADA toque: si fueran animadas por JS, los toques
+ * rápidos podrían acumular trabajo y generar "trabas".
+ *
+ * La propia partícula avisa cuándo terminó su animación
+ * (onAnimationEnd) para que el padre la elimine del estado.
+ * Esto es más robusto que un setTimeout con slice(), que
+ * dependía de que el orden de inserción nunca se rompiera.
  */
 const Crumb = memo(function Crumb({
-  crumb
+  crumb,
+  onDone
 }: {
-  crumb: { id: number; x: number; y: number; rotate: number; scale: number };
+  crumb: CrumbData;
+  onDone: (id: number) => void;
 }) {
+  const style: CSSVars = {
+    ...crumbStyle,
+    "--dx": `${crumb.dx}px`,
+    "--dy": `${crumb.dy}px`,
+    "--rot": `${crumb.rot}deg`,
+    "--s": crumb.scale
+  };
+
   return (
-    <motion.img
+    <img
       src="/images/parti.png"
-      initial={{
-        x: 0,
-        y: 0,
-        opacity: 1,
-        scale: crumb.scale
-      }}
-      animate={{
-        x: crumb.x,
-        y: crumb.y,
-        rotate: crumb.rotate,
-        opacity: 0
-      }}
-      transition={{
-        duration: 0.5,
-        ease: "easeOut"
-      }}
-      style={crumbStyle}
+      alt=""
+      draggable={false}
+      style={style}
+      className="crumb-fly"
+      onAnimationEnd={() => onDone(crumb.id)}
     />
   );
 });
@@ -88,14 +112,14 @@ export default function Game() {
   /**
    * Partículas visuales
    */
-  const [crumbs, setCrumbs] = useState<any[]>([]);
+  const [crumbs, setCrumbs] = useState<CrumbData[]>([]);
 
   /**
    * Router y parámetros
    */
   const router = useRouter();
 
-  const params = useParams();
+  const params = useParams<{ slug: string }>();
 
   const searchParams = useSearchParams();
 
@@ -106,14 +130,36 @@ export default function Game() {
   const sessionId = searchParams.get("session");
 
   /**
-   * Controles de animación
+   * Referencia directa al chocolate para animar
+   * la "sacudida" con la Web Animations API (WAAPI)
+   * en lugar de framer-motion. Se ejecuta nativamente
+   * en el navegador, sin pasar por React ni por el
+   * hilo de JS en cada frame: ideal para algo que se
+   * dispara en CADA toque del juego.
    */
-  const controls = useAnimation();
+  const chocoRef = useRef<HTMLDivElement>(null);
 
   /**
-   * Anti spam sonido
+   * Anti-spam de efectos (sonido + vibración + sacudida + partículas).
+   * El conteo del click SIEMPRE se respeta (la jugabilidad nunca se
+   * frena), pero si el usuario toca extremadamente rápido, los
+   * efectos visuales/sonoros se limitan a uno cada ~60ms para
+   * proteger el rendimiento en equipos modestos.
    */
-  const lastPlay = useRef(0);
+  const lastEffect = useRef(0);
+
+  /**
+   * Guard adicional (ref, no estado) para evitar por completo
+   * cualquier doble navegación o doble limpieza de sessionStorage
+   * si el último click llegara a procesarse dos veces.
+   */
+  const finishedRef = useRef(false);
+
+  /**
+   * Contador para ids de partículas: garantiza unicidad real
+   * (más seguro que Math.random() como key).
+   */
+  const crumbIdRef = useRef(0);
 
   /**
    * Timeouts activos, para poder limpiarlos
@@ -134,44 +180,59 @@ export default function Game() {
    */
   useEffect(() => {
 
-    /**
-     * Precarga sonidos globales
-     */
     preloadSounds();
 
     /**
-     * Recupera cantidad de golpes
-     * guardados en sesión
+     * Precarga la imagen de partículas para que el navegador
+     * ya la tenga decodificada antes del primer toque. Sin esto,
+     * el primer golpe podría sentirse "trabado" mientras el
+     * navegador descarga/decodifica la imagen por primera vez.
      */
-    const storedClicks =
-      sessionStorage.getItem("maxClicks");
+    const warmup = new window.Image();
+    warmup.src = "/images/parti.png";
+
+    /**
+     * Prefetch de la pantalla de resultado para que la
+     * transición final sea instantánea.
+     */
+    if (params?.slug) {
+      router.prefetch(`/${params.slug}/result`);
+    }
+
+    /**
+     * Recupera cantidad de golpes guardados en sesión.
+     * Envuelto en try/catch: en modo privado/incógnito de
+     * algunos navegadores sessionStorage puede lanzar error.
+     */
+    let storedClicks: string | null = null;
+    try {
+      storedClicks = sessionStorage.getItem("maxClicks");
+    } catch {
+      storedClicks = null;
+    }
 
     if (storedClicks) {
 
-      setMaxClicks(parseInt(storedClicks));
+      setMaxClicks(parseInt(storedClicks, 10));
 
     } else {
 
-      /**
-       * Genera cantidad aleatoria
-       * entre 3 y 5 golpes
-       */
-      const randomClicks =
-        Math.floor(Math.random() * 3) + 3;
+      const randomClicks = Math.floor(Math.random() * 3) + 3;
 
-      sessionStorage.setItem(
-        "maxClicks",
-        String(randomClicks)
-      );
+      try {
+        sessionStorage.setItem("maxClicks", String(randomClicks));
+      } catch {
+        /* noop: si falla, simplemente no persiste entre renders */
+      }
 
       setMaxClicks(randomClicks);
     }
 
-  }, []);
+  }, [router, params?.slug]);
 
   /**
    * Limpieza al desmontar: cancela cualquier
-   * timeout pendiente (partículas o navegación)
+   * timeout pendiente (navegación final)
    */
   useEffect(() => {
     return () => {
@@ -184,16 +245,6 @@ export default function Game() {
    * Sonido de ruptura
    */
   const playBreak = useCallback(() => {
-
-    const now = Date.now();
-
-    if (now - lastPlay.current < 80) return;
-
-    lastPlay.current = now;
-
-    /**
-     * Sonido desde AudioManager
-     */
     playSound("break");
   }, []);
 
@@ -201,104 +252,101 @@ export default function Game() {
    * Vibración móvil
    */
   const vibrate = useCallback(() => {
-
     if (navigator.vibrate) {
-
       navigator.vibrate(40);
     }
   }, []);
 
   /**
-   * Animación de golpe
+   * Animación de golpe vía WAAPI (nativa del navegador).
    */
   const shake = useCallback(() => {
-
-    controls.start({
-      scale: [1, 0.88, 1.04, 0.97, 1],
-      transition: {
-        duration: 0.22,
-        ease: "easeOut"
-      }
-    });
-  }, [controls]);
+    chocoRef.current?.animate?.(
+      [
+        { transform: "scale(1)" },
+        { transform: "scale(0.88)" },
+        { transform: "scale(1.04)" },
+        { transform: "scale(0.97)" },
+        { transform: "scale(1)" }
+      ],
+      { duration: 220, easing: "ease-out" }
+    );
+  }, []);
 
   /**
-   * Genera partículas visuales
+   * Genera partículas visuales.
+   * Limita el máximo de partículas simultáneas en pantalla
+   * (defensivo): si alguien "ametralla" la pantalla en un
+   * celular muy limitado, no se acumulan decenas de nodos
+   * DOM animándose a la vez.
    */
   const spawnCrumbs = useCallback(() => {
+    const newCrumbs: CrumbData[] = Array.from({ length: 6 }).map(() => ({
+      id: crumbIdRef.current++,
+      dx: (Math.random() - 0.5) * 140,
+      dy: (Math.random() - 0.5) * 140,
+      rot: Math.random() * 360,
+      scale: 0.6 + Math.random() * 0.6
+    }));
 
-    const newCrumbs =
-      Array.from({ length: 8 }).map(() => ({
-        id: Math.random(),
-        x: (Math.random() - 0.5) * 140,
-        y: (Math.random() - 0.5) * 140,
-        rotate: Math.random() * 360,
-        scale: 0.6 + Math.random() * 0.6
-      }));
-
-    setCrumbs((prev) => [
-      ...prev,
-      ...newCrumbs
-    ]);
-
-    trackTimeout(() => {
-
-      setCrumbs((prev) =>
-        prev.slice(newCrumbs.length)
-      );
-
-    }, 500);
-  }, [trackTimeout]);
+    setCrumbs((prev) => (prev.length > 36 ? prev : [...prev, ...newCrumbs]));
+  }, []);
 
   /**
-   * Maneja clicks del juego
+   * Elimina una partícula puntual cuando termina su animación.
    */
-  const handleClick = useCallback(() => {
+  const handleCrumbDone = useCallback((id: number) => {
+    setCrumbs((prev) => prev.filter((c) => c.id !== id));
+  }, []);
 
-    if (finished) return;
+  /**
+   * Maneja la interacción del juego.
+   * Se dispara en "pointerdown" (no en "click") para que la
+   * respuesta sea inmediata al tocar, sin esperar el evento
+   * completo de presionar+soltar.
+   */
+  const handleClick = useCallback((e?: React.PointerEvent | React.KeyboardEvent) => {
 
-    playBreak();
+    if (finishedRef.current) return;
 
-    vibrate();
+    if (e && "cancelable" in e && e.cancelable) {
+      e.preventDefault();
+    }
 
-    shake();
+    const now = Date.now();
+    const allowEffects = now - lastEffect.current > 60;
 
-    spawnCrumbs();
+    if (allowEffects) {
+      lastEffect.current = now;
+      playBreak();
+      vibrate();
+      shake();
+      spawnCrumbs();
+    }
 
     setClicks((prev) => {
 
       const newClicks = prev + 1;
 
-      /**
-       * Chocolate roto
-       */
-      if (newClicks >= maxClicks) {
+      if (newClicks >= maxClicks && !finishedRef.current) {
 
+        finishedRef.current = true;
         setFinished(true);
 
-        /**
-         * Limpia maxClicks
-         * para próximas partidas
-         */
-        sessionStorage.removeItem("maxClicks");
+        try {
+          sessionStorage.removeItem("maxClicks");
+        } catch {
+          /* noop */
+        }
 
-        /**
-         * Navega al resultado final
-         * enviando session_id
-         */
         trackTimeout(() => {
-
-          router.push(
-            `/${params.slug}/result?session=${sessionId}`
-          );
-
+          router.push(`/${params.slug}/result?session=${sessionId}`);
         }, 900);
       }
 
       return newClicks;
     });
   }, [
-    finished,
     maxClicks,
     playBreak,
     vibrate,
@@ -309,6 +357,12 @@ export default function Game() {
     params.slug,
     sessionId
   ]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      handleClick(e);
+    }
+  }, [handleClick]);
 
   return (
 
@@ -321,48 +375,29 @@ export default function Game() {
           ROMPE EL CHOCOLATE !
         </h1>
 
-        {/* Barra de progreso */}
+        {/* Barra de progreso (animación CSS, se reinicia al cambiar la key) */}
         <div style={styles.progressBar}>
 
           {clicks > 0 && (
-
-            <motion.div
+            <div
               key={clicks}
               style={styles.progressFill}
-              initial={{ width: "0%" }}
-              animate={{
-                width: ["0%", "100%", "0%"]
-              }}
-              transition={{
-                duration: 0.5,
-                ease: "easeInOut"
-              }}
+              className="progress-flash"
             />
           )}
         </div>
 
         <div style={relativeInline}>
 
-          {/* Contenedor animado */}
+          {/* Entrada animada (una sola vez al montar: framer-motion aquí no afecta el rendimiento del juego) */}
           <motion.div
-            initial={{
-              scale: 0.7,
-              opacity: 0
-            }}
-            animate={{
-              scale: 1,
-              opacity: 1
-            }}
-            transition={{
-              duration: 0.5
-            }}
+            initial={{ scale: 0.7, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.5 }}
           >
 
-            <motion.div
-              animate={controls}
-              whileTap={{
-                scale: finished ? 1 : 0.95
-              }}
+            <div
+              ref={chocoRef}
               style={
                 finished
                   ? styles.chocolateDefault
@@ -370,13 +405,13 @@ export default function Game() {
               }
             >
 
-              {/* Chocolate */}
               {clicks < maxClicks ? (
 
                 <img
                   src="/images/choco.png"
                   style={styles.image}
                   draggable={false}
+                  alt="Chocolate"
                 />
 
               ) : (
@@ -385,47 +420,94 @@ export default function Game() {
                   src="/images/gift.png"
                   style={styles.image}
                   draggable={false}
+                  alt="Premio"
                 />
               )}
-            </motion.div>
+            </div>
 
           </motion.div>
 
           {/* Área clickeable */}
           {!finished && (
-
             <div
-              onClick={handleClick}
+              role="button"
+              tabIndex={0}
+              aria-label="Golpear el chocolate"
+              onPointerDown={handleClick}
+              onKeyDown={handleKeyDown}
               style={styles.hitbox}
             />
           )}
 
           {/* Partículas */}
           {crumbs.map((crumb) => (
-            <Crumb key={crumb.id} crumb={crumb} />
+            <Crumb key={crumb.id} crumb={crumb} onDone={handleCrumbDone} />
           ))}
         </div>
 
-        {/* Martillo flotante */}
-        {clicks > 0 &&
-          clicks < maxClicks && (
-
-          <motion.div
+        {/* Martillo flotante (animación CSS, se reinicia al cambiar la key) */}
+        {clicks > 0 && clicks < maxClicks && (
+          <div
             key={clicks + "particle"}
-            initial={{ y: 0 }}
-            animate={{
-              opacity: 0,
-              y: -60
-            }}
-            transition={{
-              duration: 0.6
-            }}
+            className="hammer-float"
             style={styles.particle}
           >
             🔨
-          </motion.div>
+          </div>
         )}
       </div>
+
+      <style jsx global>{`
+        @keyframes crumbFly {
+          0% {
+            transform: translate(-50%, -50%) scale(var(--s));
+            opacity: 1;
+          }
+          100% {
+            transform: translate(
+                calc(-50% + var(--dx)),
+                calc(-50% + var(--dy))
+              )
+              rotate(var(--rot)) scale(var(--s));
+            opacity: 0;
+          }
+        }
+
+        .crumb-fly {
+          animation: crumbFly 0.5s ease-out forwards;
+        }
+
+        @keyframes progressFlash {
+          0% {
+            width: 0%;
+          }
+          50% {
+            width: 100%;
+          }
+          100% {
+            width: 0%;
+          }
+        }
+
+        .progress-flash {
+          animation: progressFlash 0.5s ease-in-out forwards;
+        }
+
+        @keyframes hammerFloat {
+          0% {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+          }
+          100% {
+            opacity: 0;
+            transform: translateX(-50%) translateY(-60px);
+          }
+        }
+
+        .hammer-float {
+          animation: hammerFloat 0.6s ease-out forwards;
+        }
+      `}</style>
 
     </ChocolateBackground>
   );
@@ -448,7 +530,6 @@ const crumbStyle: React.CSSProperties = {
   left: "50%",
   width: "12px",
   pointerEvents: "none",
-  transform: "translate(-50%, -50%)",
   willChange: "transform, opacity"
 };
 
@@ -482,8 +563,7 @@ const styles: {
 
   progressFill: {
     height: "100%",
-    background:
-      "linear-gradient(90deg, gold, orange)",
+    background: "linear-gradient(90deg, gold, orange)",
     width: "0%",
     willChange: "width"
   },
@@ -518,14 +598,16 @@ const styles: {
     width: "clamp(260px, 70vw, 300px)",
     height: "clamp(260px, 70vw, 300px)",
     cursor: "pointer",
-    zIndex: 5
+    zIndex: 5,
+    touchAction: "manipulation",
+    WebkitUserSelect: "none",
+    WebkitTapHighlightColor: "transparent"
   },
 
   particle: {
     position: "absolute",
     top: "40%",
     left: "50%",
-    transform: "translateX(-50%)",
     fontSize: "120px"
   }
 };
