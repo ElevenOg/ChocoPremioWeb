@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, memo } from "react";
 
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -33,20 +33,76 @@ import {
 
 /**
  * NOTA SOBRE "canvas-confetti":
- * Ya NO se importa de forma estática arriba del archivo (eso
- * obligaba a descargarla antes de poder mostrar la tarjeta,
- * sumando peso al primer render). Se carga de forma diferida
- * (dynamic import) y se reutiliza UNA SOLA instancia creada
- * con { useWorker: true }, para que el dibujo del confetti
- * corra en un Web Worker y no compita por el hilo principal
- * con las animaciones de entrada de la tarjeta — esto es lo
- * que más se nota en celulares de gama baja.
+ * Sigue sin importarse de forma estática arriba del archivo
+ * (eso obligaba a descargarla antes de poder mostrar la
+ * tarjeta, sumando peso al primer render). Se carga de forma
+ * diferida (dynamic import) y se reutiliza UNA SOLA instancia
+ * creada con { useWorker: true }, para que el dibujo del
+ * confetti corra en un Web Worker y no compita por el hilo
+ * principal con las animaciones de entrada de la tarjeta —
+ * esto es lo que más se nota en celulares de gama baja.
  */
 
 interface PrizeData {
   prize?: {
     name?: string;
   };
+}
+
+/**
+ * Accesos seguros a sessionStorage/localStorage.
+ * En modo incógnito o con restricciones del navegador,
+ * estas APIs pueden lanzar errores: con esto, la app nunca
+ * se rompe por eso, simplemente no persiste ese dato puntual.
+ *
+ * (Mismo patrón usado en Result.tsx — si en algún momento se
+ * quiere compartir código entre pantallas, esto es un buen
+ * candidato para moverlo a un archivo utils/storage.ts común.)
+ */
+function safeGet(storage: Storage, key: string): string | null {
+  try {
+    return storage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSet(storage: Storage, key: string, value: string) {
+  try {
+    storage.setItem(key, value);
+  } catch {
+    /* noop */
+  }
+}
+
+function safeRemove(storage: Storage, key: string) {
+  try {
+    storage.removeItem(key);
+  } catch {
+    /* noop */
+  }
+}
+
+/**
+ * Reproduce un sonido "a prueba de fallos": si el navegador
+ * bloquea el audio o el archivo no llegó a cargar, esto NUNCA
+ * revienta en consola ni interrumpe el resto de la app. Es un
+ * efecto decorativo: si falla, simplemente no suena.
+ */
+function safePlay(name: Parameters<typeof playSound>[0]) {
+  try {
+    const maybePromise = playSound(name) as unknown;
+    if (
+      maybePromise &&
+      typeof (maybePromise as Promise<unknown>).catch === "function"
+    ) {
+      (maybePromise as Promise<unknown>).catch(() => {
+        /* noop */
+      });
+    }
+  } catch {
+    /* noop */
+  }
 }
 
 type ConfettiFireFn = (opts?: Record<string, unknown>) => void;
@@ -110,12 +166,21 @@ async function fireWelcomeConfetti() {
 }
 
 /**
+ * Tiempo máximo (ms) que se le da al audio para terminar de
+ * precargar antes de mostrar la tarjeta. Si el sonido ya está
+ * listo antes de esto, se revela de inmediato; esto solo actúa
+ * como techo para conexiones lentas, así el loader nunca
+ * espera más de lo necesario. Mismo patrón usado en Result.tsx.
+ */
+const MAX_SOUND_WAIT_MS = 600;
+
+/**
  * StepChip — MISMO componente visual que el Intro
  * (mismo padding, bordes, tamaños de letra).
  * Única diferencia pedida: cuando no está hecho,
  * muestra "X" en vez de un número.
  */
-const StepChip = ({
+const StepChip = memo(function StepChip({
   label,
   done,
   onClick
@@ -123,66 +188,113 @@ const StepChip = ({
   label: string;
   done: boolean;
   onClick?: () => void;
-}) => (
-  <motion.div
-    onClick={!done ? onClick : undefined}
-    whileTap={!done && onClick ? { scale: 0.97 } : {}}
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: "12px",
-      padding: "12px 14px",
-      borderRadius: "16px",
-      background: done
-        ? "rgba(77,56,0,0.1)"
-        : "rgba(255,229,0,0.2)",
-      border: done
-        ? "1.5px solid #4d3800"
-        : "1.5px solid #ffe500",
-      cursor: !done && onClick ? "pointer" : "default",
-      transition: "all 0.25s ease",
-      WebkitTapHighlightColor: "transparent"
-    }}
-  >
-    <div
+}) {
+  return (
+    <motion.div
+      onClick={!done ? onClick : undefined}
+      whileTap={!done && onClick ? { scale: 0.97 } : {}}
       style={{
-        width: "28px",
-        height: "28px",
-        borderRadius: "50%",
         display: "flex",
         alignItems: "center",
-        justifyContent: "center",
-        fontSize: "13px",
-        fontWeight: 800,
-        flexShrink: 0,
-        background: done ? "#4d3800" : "#ffe500",
-        color: done ? "#fff" : "#4d3800",
-        transition: "all 0.3s ease"
+        gap: "12px",
+        padding: "12px 14px",
+        borderRadius: "16px",
+        background: done
+          ? "rgba(77,56,0,0.1)"
+          : "rgba(255,229,0,0.2)",
+        border: done
+          ? "1.5px solid #4d3800"
+          : "1.5px solid #ffe500",
+        cursor: !done && onClick ? "pointer" : "default",
+        transition: "all 0.25s ease",
+        WebkitTapHighlightColor: "transparent"
       }}
     >
-      {done ? "✓" : "✕"}
-    </div>
+      <div
+        style={{
+          width: "28px",
+          height: "28px",
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "13px",
+          fontWeight: 800,
+          flexShrink: 0,
+          background: done ? "#4d3800" : "#ffe500",
+          color: done ? "#fff" : "#4d3800",
+          transition: "all 0.3s ease"
+        }}
+      >
+        {done ? "✓" : "✕"}
+      </div>
 
-    <span
-      style={{
-        flex: 1,
-        textAlign: "left",
-        fontSize: "clamp(13px, 3.5vw, 15px)",
-        color: done ? "#4d3800" : "#3a2800",
-        fontWeight: done ? 700 : 500,
-        transition: "all 0.25s ease"
-      }}
-    >
-      {label}
-    </span>
-
-    {!done && onClick && (
-      <span style={{ color: "#c47a00", fontSize: "16px", fontWeight: 700 }}>
-        →
+      <span
+        style={{
+          flex: 1,
+          textAlign: "left",
+          fontSize: "clamp(13px, 3.5vw, 15px)",
+          color: done ? "#4d3800" : "#3a2800",
+          fontWeight: done ? 700 : 500,
+          transition: "all 0.25s ease"
+        }}
+      >
+        {label}
       </span>
-    )}
-  </motion.div>
-);
+
+      {!done && onClick && (
+        <span style={{ color: "#c47a00", fontSize: "16px", fontWeight: 700 }}>
+          →
+        </span>
+      )}
+    </motion.div>
+  );
+});
+
+/**
+ * Partículas de fondo (🎁), memoizadas para que NUNCA se
+ * vuelvan a renderizar cuando cambie el estado del padre
+ * (redeemed, submitting, showConfirm, etc). Mismo patrón que
+ * el FloatingEmojis de Intro.tsx.
+ */
+const FloatingGifts = memo(function FloatingGifts() {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex: 0,
+        overflow: "hidden",
+        contain: "strict"
+      }}
+      aria-hidden="true"
+    >
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <span
+          key={i}
+          className="claim-bg-particle"
+          style={{
+            position: "absolute",
+            bottom: "-20px",
+            left: `${8 + i * 16}%`,
+            fontSize: i % 2 === 0 ? "20px" : "14px",
+            opacity: 0.15 + i * 0.02,
+            animationDuration: `${5 + i * 0.9}s`,
+            animationDelay: `${i * 0.8}s`,
+            userSelect: "none",
+            willChange: "transform"
+          }}
+        >
+          🎁
+        </span>
+      ))}
+    </div>
+  );
+});
 
 export default function Claim() {
 
@@ -220,54 +332,98 @@ export default function Claim() {
   const welcomeFired = useRef(false);
 
   /**
-   * Precargar sonidos
+   * Promesa que se resuelve cuando el audio terminó de
+   * precargar (o si falla, también se resuelve para no
+   * bloquear nada). Se usa para darle al sonido una
+   * oportunidad de estar listo antes de mostrar la tarjeta,
+   * así el primer toque en "Mostrar en caja" nunca queda
+   * mudo. Mismo patrón que en Result.tsx.
    */
-  useEffect(() => {
-    preloadSounds();
-  }, []);
+  const soundsReadyRef = useRef<Promise<void>>(Promise.resolve());
 
   /**
-   * Cargar premio guardado — SIN CAMBIOS DE LÓGICA
+   * Precargar sonidos + prefetch de la ruta de inicio, para
+   * que "Finalizar" navegue al instante cuando se confirme.
+   */
+  useEffect(() => {
+    try {
+      soundsReadyRef.current = Promise.resolve(preloadSounds()).catch(
+        () => {
+          /* noop: si falla la precarga, no bloqueamos la vista */
+        }
+      );
+    } catch {
+      soundsReadyRef.current = Promise.resolve();
+    }
+
+    router.prefetch("/");
+  }, [router]);
+
+  /**
+   * Cargar premio guardado — MISMA LÓGICA que antes, solo que
+   * ahora, antes de ocultar el loader, se le da al sonido una
+   * última oportunidad de terminar de precargar (hasta
+   * MAX_SOUND_WAIT_MS). Si la conexión es muy lenta, el loader
+   * nunca espera más de ese tope.
    */
   useEffect(() => {
 
-    try {
+    let cancelled = false;
 
-      if (!sessionId) {
-        setLoading(false);
-        return;
+    const load = async () => {
+
+      try {
+
+        if (sessionId) {
+
+          /**
+           * Premio guardado desde RESULT
+           */
+          const savedPrize = safeGet(localStorage, `prize_${sessionId}`);
+
+          if (savedPrize) {
+
+            const parsed: PrizeData = JSON.parse(savedPrize);
+
+            if (!cancelled) {
+              setPrize({
+                name: parsed.prize?.name || "Premio especial"
+              });
+            }
+          }
+
+          /**
+           * Estado mostrado en caja
+           */
+          const redeemedSession = safeGet(
+            sessionStorage,
+            `redeemed_${sessionId}`
+          );
+
+          if (redeemedSession === "true" && !cancelled) {
+            setRedeemed(true);
+          }
+        }
+
+      } catch (error) {
+        console.error("CLAIM LOAD ERROR", error);
       }
 
-      /**
-       * Premio guardado desde RESULT
-       */
-      const savedPrize = localStorage.getItem(`prize_${sessionId}`);
+      await Promise.race([
+        soundsReadyRef.current,
+        new Promise<void>((resolve) =>
+          setTimeout(resolve, MAX_SOUND_WAIT_MS)
+        )
+      ]);
 
-      if (savedPrize) {
+      if (!cancelled) setLoading(false);
+    };
 
-        const parsed: PrizeData = JSON.parse(savedPrize);
+    load();
 
-        setPrize({
-          name: parsed.prize?.name || "Premio especial"
-        });
-      }
-
-      /**
-       * Estado mostrado en caja
-       */
-      const redeemedSession = sessionStorage.getItem(
-        `redeemed_${sessionId}`
-      );
-
-      if (redeemedSession === "true") {
-        setRedeemed(true);
-      }
-
-    } catch (error) {
-      console.error("CLAIM LOAD ERROR", error);
-    } finally {
-      setLoading(false);
-    }
+    return () => {
+      cancelled = true;
+    };
 
   }, [sessionId]);
 
@@ -296,18 +452,15 @@ export default function Claim() {
 
   /**
    * Mostrar en caja.
-   * El sonido ya no se espera (await) antes de actualizar el
-   * estado: es decorativo y no debería demorar la respuesta
-   * visual al tap del usuario.
    */
   const handleRedeem = useCallback(() => {
 
-    playSound("click");
+    safePlay("click");
 
     setRedeemed(true);
 
     if (sessionId) {
-      sessionStorage.setItem(`redeemed_${sessionId}`, "true");
+      safeSet(sessionStorage, `redeemed_${sessionId}`, "true");
     }
 
   }, [sessionId]);
@@ -316,7 +469,7 @@ export default function Claim() {
    * Abrir modal finalizar
    */
   const handleFinish = useCallback(() => {
-    playSound("click");
+    safePlay("click");
     setShowConfirm(true);
   }, []);
 
@@ -324,7 +477,7 @@ export default function Claim() {
    * Cancelar modal
    */
   const handleCancel = useCallback(() => {
-    playSound("click");
+    safePlay("click");
     setShowConfirm(false);
   }, []);
 
@@ -336,17 +489,25 @@ export default function Claim() {
     if (submitting) return;
     setSubmitting(true);
 
-    playSound("click");
+    safePlay("click");
 
     if (sessionId) {
-      sessionStorage.removeItem(`retry_${sessionId}`);
-      sessionStorage.removeItem(`effects_played_${sessionId}`);
-      sessionStorage.removeItem(`redeemed_${sessionId}`);
-      localStorage.removeItem(`prize_${sessionId}`);
+      safeRemove(sessionStorage, `retry_${sessionId}`);
+      safeRemove(sessionStorage, `effects_played_${sessionId}`);
+      safeRemove(sessionStorage, `redeemed_${sessionId}`);
+      try {
+        localStorage.removeItem(`prize_${sessionId}`);
+      } catch {
+        /* noop */
+      }
     }
 
-    sessionStorage.removeItem("redeemed");
-    localStorage.removeItem("prize");
+    safeRemove(sessionStorage, "redeemed");
+    try {
+      localStorage.removeItem("prize");
+    } catch {
+      /* noop */
+    }
 
     router.push("/");
 
@@ -355,7 +516,10 @@ export default function Claim() {
   const canFinish = redeemed && !submitting;
 
   /**
-   * Loader
+   * LOADER: se mantiene mientras se lee el premio guardado Y
+   * mientras el sonido de "click" termina de precargar (con
+   * tope de MAX_SOUND_WAIT_MS). Así, cuando se ve la tarjeta,
+   * ya se puede tocar cualquier botón con sonido garantizado.
    */
   if (loading) {
     return <ChocolateLoader />;
@@ -365,171 +529,139 @@ export default function Claim() {
 
     <ChocolateBackground>
 
-      {/* Partículas flotantes — MISMO patrón del Intro,
-          pero con 🎁 en vez de 🍫. 100% CSS, sin costo de JS. */}
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          pointerEvents: "none",
-          zIndex: 0,
-          overflow: "hidden"
+      <FloatingGifts />
+
+      {/**
+       * Nota: se retiró el <AnimatePresence mode="wait"> que
+       * envolvía esta tarjeta. Esa envoltura solo tiene sentido
+       * cuando algo se desmonta/reemplaza (como en Intro, donde
+       * la tarjeta puede ocultarse); aquí la tarjeta siempre
+       * está montada, así que la animación de entrada (initial
+       * + animate) alcanza por sí sola, sin el costo extra de
+       * un AnimatePresence que nunca llega a animar una salida.
+       */}
+      <motion.div
+        initial={{ scale: 0.82, opacity: 0, y: 60 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{
+          type: "spring",
+          damping: 22,
+          stiffness: 160,
+          mass: 0.8
         }}
-        aria-hidden="true"
+        style={styles.card}
       >
-        {[...Array(6)].map((_, i) => (
-          <span
-            key={i}
+
+        {/* Logo + halo — animación 100% CSS (transform-only),
+            el navegador la corre en el hilo de composición. */}
+        <div style={styles.logoWrapper}>
+          <div className="claim-halo" style={styles.halo} />
+          <div className="claim-logo-float" style={styles.logoEmoji}>
+            🎁
+          </div>
+        </div>
+
+        <motion.h1
+          style={styles.title}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15, duration: 0.4 }}
+        >
+          ¡EXCELENTE!
+        </motion.h1>
+
+        <motion.p
+          style={styles.subtitle}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.4 }}
+        >
+          Has ganado:
+        </motion.p>
+
+        <motion.div
+          style={styles.prizeBox}
+          initial={{ opacity: 0, scale: 0.92 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.3, duration: 0.35 }}
+        >
+          {prize.name}
+        </motion.div>
+
+        <motion.div
+          style={styles.divider}
+          initial={{ scaleX: 0, opacity: 0 }}
+          animate={{ scaleX: 1, opacity: 1 }}
+          transition={{ delay: 0.35, duration: 0.4 }}
+        />
+
+        <motion.div
+          style={styles.steps}
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4, duration: 0.4 }}
+        >
+          <StepChip
+            label={redeemed ? "Mostrado en caja" : "Mostrar en caja"}
+            done={redeemed}
+            onClick={handleRedeem}
+          />
+        </motion.div>
+
+        <motion.div
+          style={{ width: "100%" }}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5, duration: 0.4 }}
+        >
+          <motion.button
+            disabled={!canFinish}
+            onClick={handleFinish}
+            whileTap={canFinish ? { scale: 0.96 } : {}}
             style={{
-              position: "absolute",
-              bottom: "-20px",
-              left: `${8 + i * 16}%`,
-              fontSize: i % 2 === 0 ? "20px" : "14px",
-              opacity: 0.15 + i * 0.02,
-              animationName: "floatUp",
-              animationDuration: `${5 + i * 0.9}s`,
-              animationDelay: `${i * 0.8}s`,
-              animationTimingFunction: "linear",
-              animationIterationCount: "infinite",
-              userSelect: "none"
+              ...styles.button,
+              opacity: canFinish ? 1 : 0.45,
+              cursor: canFinish ? "pointer" : "not-allowed",
+              position: "relative",
+              overflow: "hidden"
             }}
           >
-            🎁
-          </span>
-        ))}
-      </div>
-
-      <AnimatePresence mode="wait">
-        <motion.div
-          key="claim-card"
-          initial={{ scale: 0.82, opacity: 0, y: 60 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          transition={{
-            type: "spring",
-            damping: 22,
-            stiffness: 160,
-            mass: 0.8
-          }}
-          style={styles.card}
-        >
-
-          {/* Logo + halo — antes animados con framer-motion en
-              loop infinito (JS recalculando cada frame). Ahora
-              son animaciones CSS transform-only, mucho más
-              livianas y que el navegador puede correr en el
-              hilo de composición en vez del hilo principal. */}
-          <div style={styles.logoWrapper}>
-            <div className="claim-halo" style={styles.halo} />
-            <div className="claim-logo-float" style={styles.logoEmoji}>
-              🎁
-            </div>
-          </div>
-
-          <motion.h1
-            style={styles.title}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15, duration: 0.4 }}
-          >
-            ¡EXCELENTE!
-          </motion.h1>
-
-          <motion.p
-            style={styles.subtitle}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25, duration: 0.4 }}
-          >
-            Has ganado:
-          </motion.p>
-
-          <motion.div
-            style={styles.prizeBox}
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3, duration: 0.35 }}
-          >
-            {prize.name}
-          </motion.div>
-
-          <motion.div
-            style={styles.divider}
-            initial={{ scaleX: 0, opacity: 0 }}
-            animate={{ scaleX: 1, opacity: 1 }}
-            transition={{ delay: 0.35, duration: 0.4 }}
-          />
-
-          <motion.div
-            style={styles.steps}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.4 }}
-          >
-            <StepChip
-              label={redeemed ? "Mostrado en caja" : "Mostrar en caja"}
-              done={redeemed}
-              onClick={handleRedeem}
-            />
-          </motion.div>
-
-          <motion.div
-            style={{ width: "100%" }}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.4 }}
-          >
-            <motion.button
-              disabled={!canFinish}
-              onClick={handleFinish}
-              whileTap={canFinish ? { scale: 0.96 } : {}}
-              style={{
-                ...styles.button,
-                opacity: canFinish ? 1 : 0.45,
-                cursor: canFinish ? "pointer" : "not-allowed",
-                position: "relative",
-                overflow: "hidden"
-              }}
-            >
-              {canFinish && (
-                <span className="claim-button-shine" style={styles.buttonShine} />
-              )}
-              <span style={{ position: "relative", zIndex: 1 }}>
-                FINALIZAR
-              </span>
-            </motion.button>
-          </motion.div>
-
-          <AnimatePresence>
-            {!redeemed && (
-              <motion.p
-                key="warning"
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                style={styles.warning}
-              >
-                Muestra el premio en caja primero
-              </motion.p>
+            {canFinish && (
+              <span className="claim-button-shine" style={styles.buttonShine} />
             )}
-          </AnimatePresence>
-
-          <motion.div
-            style={styles.termsBox}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.55, duration: 0.4 }}
-          >
-            <p style={styles.termsTitle}>Importante:</p>
-            <ul style={styles.termsList}>
-              <li>• Validar el premio en el punto de atención</li>
-            </ul>
-          </motion.div>
-
+            <span style={{ position: "relative", zIndex: 1 }}>
+              FINALIZAR
+            </span>
+          </motion.button>
         </motion.div>
-      </AnimatePresence>
+
+        <AnimatePresence>
+          {!redeemed && (
+            <motion.p
+              key="warning"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              style={styles.warning}
+            >
+              Muestra el premio en caja primero
+            </motion.p>
+          )}
+        </AnimatePresence>
+
+        <motion.div
+          style={styles.termsBox}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.55, duration: 0.4 }}
+        >
+          <p style={styles.termsTitle}>Importante:</p>
+          <ul style={styles.termsList}>
+            <li>• Validar el premio en el punto de atención</li>
+          </ul>
+        </motion.div>
+
+      </motion.div>
 
       <AnimatePresence>
 
@@ -599,6 +731,12 @@ export default function Claim() {
           100% { transform: translateY(-105vh) rotate(20deg); opacity: 0; }
         }
 
+        .claim-bg-particle {
+          animation-name: floatUp;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+        }
+
         @keyframes claimHaloPulse {
           0%, 100% { transform: scale(1); opacity: 0.3; }
           50%      { transform: scale(1.15); opacity: 0.55; }
@@ -633,7 +771,8 @@ export default function Claim() {
         @media (prefers-reduced-motion: reduce) {
           .claim-halo,
           .claim-logo-float,
-          .claim-button-shine {
+          .claim-button-shine,
+          .claim-bg-particle {
             animation: none !important;
           }
         }
@@ -811,7 +950,7 @@ const styles: {
     width: "100%",
     height: "100%",
     background: "rgba(0,0,0,0.55)",
-    backdropFilter: "blur(6px)",
+    backdropFilter: "blur(4px)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",

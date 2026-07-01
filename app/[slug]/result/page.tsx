@@ -119,6 +119,30 @@ function safeRemove(storage: Storage, key: string) {
 }
 
 /**
+ * Reproduce un sonido "a prueba de fallos": si el navegador
+ * bloquea el audio (por ejemplo, políticas de autoplay) o el
+ * archivo no llegó a cargar, esto NUNCA revienta en consola
+ * ni interrumpe el resto de la app. Es solo un efecto
+ * decorativo: si falla, simplemente no suena, pero el juego
+ * sigue funcionando con normalidad.
+ */
+function safePlay(name: Parameters<typeof playSound>[0]) {
+  try {
+    const maybePromise = playSound(name) as unknown;
+    if (
+      maybePromise &&
+      typeof (maybePromise as Promise<unknown>).catch === "function"
+    ) {
+      (maybePromise as Promise<unknown>).catch(() => {
+        /* noop: reproducción bloqueada o fallida, no es crítico */
+      });
+    }
+  } catch {
+    /* noop */
+  }
+}
+
+/**
  * Colores oficiales por tipo de premio.
  * SE MANTIENEN IGUAL — no se tocan.
  */
@@ -427,6 +451,16 @@ function PrizeGlyph({ emoji, size }: { emoji: string; size: number }) {
   );
 }
 
+/**
+ * Tiempo máximo (ms) que se le da al audio para terminar de
+ * precargar antes de revelar el premio. Si el sonido ya está
+ * listo antes de esto, se revela de inmediato (no se espera
+ * este tiempo completo); esto solo actúa como techo para
+ * conexiones lentas, así el loader nunca se queda esperando
+ * más de lo necesario.
+ */
+const MAX_SOUND_WAIT_MS = 600;
+
 export default function Result() {
 
   /**
@@ -464,6 +498,15 @@ export default function Result() {
   const initializedRef = useRef(false);
 
   /**
+   * Promesa que se resuelve cuando el audio terminó de
+   * precargar (o si falla, también se resuelve para no
+   * bloquear nada). Se usa para darle al sonido una
+   * oportunidad de estar listo antes de revelar el premio,
+   * sin depender de temporizadores fijos.
+   */
+  const soundsReadyRef = useRef<Promise<void>>(Promise.resolve());
+
+  /**
    * Timeouts activos — se limpian al desmontar
    * para evitar setState en componente desmontado
    */
@@ -486,9 +529,22 @@ export default function Result() {
    * Precarga sonidos y la imagen de chocolate (por si esta
    * pantalla llegara a ser la primera del flujo en pedirla;
    * en el resto de los casos ya estará en caché del navegador).
+   *
+   * Se guarda la promesa de precarga en soundsReadyRef para
+   * poder esperarla (con un tope) antes de revelar el premio,
+   * garantizando que el sonido de victoria/derrota realmente
+   * esté listo para sonar en el momento en que se necesita.
    */
   useEffect(() => {
-    preloadSounds();
+    try {
+      soundsReadyRef.current = Promise.resolve(preloadSounds()).catch(
+        () => {
+          /* noop: si falla la precarga, no bloqueamos el reveal */
+        }
+      );
+    } catch {
+      soundsReadyRef.current = Promise.resolve();
+    }
 
     const warmup = new window.Image();
     warmup.src = "/images/choco.png";
@@ -496,20 +552,19 @@ export default function Result() {
 
   /**
    * Sonidos centralizados.
-   * Ya no se esperan (await) antes de continuar: reproducir
-   * un sonido es decorativo y no debería retrasar ninguna
-   * otra acción (confetti, navegación, etc.).
+   * Se reproducen a través de safePlay: nunca bloquean con
+   * await y nunca revientan si el navegador bloquea el audio.
    */
   const playWin = useCallback(() => {
-    playSound("win");
+    safePlay("win");
   }, []);
 
   const playLose = useCallback(() => {
-    playSound("lose");
+    safePlay("lose");
   }, []);
 
   const playClick = useCallback(() => {
-    playSound("click");
+    safePlay("click");
   }, []);
 
   /**
@@ -595,20 +650,30 @@ export default function Result() {
         }
 
         /**
-         * Dispara el flujo visual de reveal:
-         * suspense breve (solo si gana algo distinto
-         * de "lose") y luego revela.
+         * Dispara el flujo visual de reveal.
+         *
+         * Antes de ocultar el loader, se le da al audio una
+         * última oportunidad de terminar de precargar (hasta
+         * MAX_SOUND_WAIT_MS). Así, cuando aparece el premio,
+         * el sonido de victoria/derrota está realmente listo
+         * para reproducirse — y si la conexión es muy lenta,
+         * el loader nunca espera más de ese tope.
          */
-        const startReveal = (prize: Prize) => {
+        const startReveal = async (prize: Prize) => {
+
+          await Promise.race([
+            soundsReadyRef.current,
+            new Promise<void>((resolve) =>
+              setTimeout(resolve, MAX_SOUND_WAIT_MS)
+            )
+          ]);
 
           setLoading(false);
 
           /**
-           * El premio se revela de una vez, sin animación de
-           * suspenso previa. Si el premio es una celebración
-           * (no "lose"/"retry"), se precarga igual la instancia
-           * de confetti, para que la primera ráfaga salga sin
-           * demora.
+           * Si el premio es una celebración (no "lose"/"retry"),
+           * se precarga igual la instancia de confetti, para
+           * que la primera ráfaga salga sin demora.
            */
           const isCelebration =
             prize.type !== "lose" && prize.type !== "retry";
@@ -639,7 +704,7 @@ export default function Result() {
               prize: existingPrize
             });
 
-            startReveal(existingPrize);
+            await startReveal(existingPrize);
 
             return;
           }
@@ -711,7 +776,7 @@ export default function Result() {
 
         setResult(finalResult);
 
-        startReveal(selectedPrize);
+        await startReveal(selectedPrize);
 
       } catch (error) {
         console.error("RESULT ERROR", error);
@@ -826,8 +891,9 @@ export default function Result() {
 
   /**
    * LOADER NECESARIO
-   * mientras consulta sesión
-   * y premio en Supabase
+   * mientras consulta sesión y premio en Supabase, Y mientras
+   * el sonido de victoria/derrota termina de precargar (con
+   * un tope de MAX_SOUND_WAIT_MS para conexiones lentas).
    */
   if (loading) {
     return <ChocolateLoader />;

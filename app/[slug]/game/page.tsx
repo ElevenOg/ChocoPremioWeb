@@ -15,6 +15,11 @@ import {
  */
 import ChocolateBackground from "../../components/ChocolateBackground";
 
+/**
+ * COMPONENTE DE CARGA
+ */
+import ChocolateLoader from "../../components/ChocolateLoader";
+
 // BLOQUEO DE NAVEGACIÓN
 import useBlockBackNavigation from "../../components/useBlockBackNavigation";
 
@@ -25,6 +30,24 @@ import {
   playSound,
   preloadSounds
 } from "../../components/AudioManager";
+
+/**
+ * Tiempo mínimo que se muestra el loader, aunque todo cargue
+ * al instante (caché/conexión rápida). Sin esto, en conexiones
+ * rápidas el loader aparecería y desaparecería en ~20ms, lo
+ * cual se siente como un parpadeo/glitch en vez de una carga
+ * intencional.
+ */
+const MIN_LOADING_MS = 550;
+
+/**
+ * Tiempo máximo de espera antes de arrancar el juego de
+ * todos modos. Es una red de seguridad: si una imagen falla
+ * en cargar o "decode()" no resuelve en algún navegador raro,
+ * el juego NUNCA debe quedarse trabado en el loader para
+ * siempre.
+ */
+const MAX_LOADING_MS = 4000;
 
 /**
  * Tipo para permitir variables CSS personalizadas
@@ -39,6 +62,51 @@ interface CrumbData {
   dy: number;
   rot: number;
   scale: number;
+}
+
+/**
+ * Precarga una imagen y espera a que esté REALMENTE lista
+ * para pintarse sin costo: no solo descargada (onload), sino
+ * decodificada (img.decode()). Decodificar una imagen grande
+ * la primera vez que se pinta puede tomar varios milisegundos
+ * en el hilo principal; hacerlo antes, durante el loader,
+ * evita que ese costo aparezca justo cuando el jugador ya
+ * está tocando la pantalla.
+ *
+ * Nunca rechaza: si una imagen falla, se resuelve igual para
+ * no bloquear el arranque del juego por un solo asset.
+ */
+function preloadImage(src: string): Promise<void> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+
+    img.onload = () => {
+      if (typeof img.decode === "function") {
+        img.decode().then(() => resolve()).catch(() => resolve());
+      } else {
+        resolve();
+      }
+    };
+
+    img.onerror = () => resolve();
+
+    img.src = src;
+  });
+}
+
+/**
+ * Envuelve preloadSounds() de forma segura: sea que devuelva
+ * una Promise, undefined, o lance un error, esta función
+ * siempre resuelve (nunca bloquea ni rompe el arranque).
+ */
+function safePreloadSounds(): Promise<void> {
+  try {
+    return Promise.resolve(preloadSounds())
+      .then(() => undefined)
+      .catch(() => undefined);
+  } catch {
+    return Promise.resolve();
+  }
 }
 
 /**
@@ -91,6 +159,13 @@ export default function Game() {
    * (se queda en Intro)
    */
   useBlockBackNavigation();
+
+  /**
+   * Loader de precarga: true hasta que las imágenes estén
+   * decodificadas y los sonidos listos (con mínimo y máximo
+   * de tiempo, ver constantes arriba).
+   */
+  const [loading, setLoading] = useState<boolean>(true);
 
   /**
    * Estado de clicks realizados
@@ -176,44 +251,17 @@ export default function Game() {
   }, []);
 
   /**
-   * Inicialización
+   * Setup síncrono e inmediato: cantidad de golpes y prefetch
+   * de la siguiente pantalla. No depende de ninguna carga de
+   * assets, así que corre apenas se monta el componente,
+   * en paralelo con la precarga de abajo.
    */
   useEffect(() => {
 
-    preloadSounds();
-
-    /**
-     * Precarga TODAS las imágenes del juego (partículas, chocolate
-     * y, sobre todo, el regalo) para que el navegador ya las tenga
-     * descargadas y decodificadas antes de necesitarlas.
-     *
-     * "gift.png" es la más importante de precargar: solo aparece
-     * en el instante exacto en que el usuario gana, que es el
-     * momento más importante de toda la experiencia. Si no está
-     * precargada, justo ahí podría haber un parpadeo o una pausa
-     * mientras el navegador la descarga por primera vez — el peor
-     * lugar posible para que se note una traba.
-     */
-    ["/images/parti.png", "/images/choco.png", "/images/gift.png"].forEach(
-      (src) => {
-        const warmup = new window.Image();
-        warmup.src = src;
-      }
-    );
-
-    /**
-     * Prefetch de la pantalla de resultado para que la
-     * transición final sea instantánea.
-     */
     if (params?.slug) {
       router.prefetch(`/${params.slug}/result`);
     }
 
-    /**
-     * Recupera cantidad de golpes guardados en sesión.
-     * Envuelto en try/catch: en modo privado/incógnito de
-     * algunos navegadores sessionStorage puede lanzar error.
-     */
     let storedClicks: string | null = null;
     try {
       storedClicks = sessionStorage.getItem("maxClicks");
@@ -241,8 +289,56 @@ export default function Game() {
   }, [router, params?.slug]);
 
   /**
+   * Precarga real de assets: imágenes decodificadas + sonidos
+   * listos. El juego se muestra recién cuando todo esto
+   * termina (o cuando se agota MAX_LOADING_MS, lo que pase
+   * primero), respetando además un mínimo de MIN_LOADING_MS
+   * para que la transición se sienta intencional y no un
+   * parpadeo.
+   *
+   * "gift.png" es la más importante de precargar: solo
+   * aparece en el instante exacto en que el usuario gana, el
+   * momento más importante de la experiencia. Precargarla y
+   * decodificarla de antemano evita cualquier pausa justo ahí.
+   */
+  useEffect(() => {
+
+    let cancelled = false;
+
+    const startedAt = Date.now();
+
+    const assetsReady = Promise.all([
+      preloadImage("/images/parti.png"),
+      preloadImage("/images/choco.png"),
+      preloadImage("/images/gift.png"),
+      safePreloadSounds()
+    ]);
+
+    const safetyTimeout = new Promise<void>((resolve) => {
+      trackTimeout(() => resolve(), MAX_LOADING_MS);
+    });
+
+    Promise.race([assetsReady.then(() => undefined), safetyTimeout]).then(() => {
+
+      if (cancelled) return;
+
+      const elapsed = Date.now() - startedAt;
+      const remaining = Math.max(MIN_LOADING_MS - elapsed, 0);
+
+      trackTimeout(() => {
+        if (!cancelled) setLoading(false);
+      }, remaining);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+
+  }, [trackTimeout]);
+
+  /**
    * Limpieza al desmontar: cancela cualquier
-   * timeout pendiente (navegación final)
+   * timeout pendiente (navegación final, precarga)
    */
   useEffect(() => {
     return () => {
@@ -373,6 +469,15 @@ export default function Game() {
       handleClick(e);
     }
   }, [handleClick]);
+
+  /**
+   * Mientras las imágenes no estén decodificadas y los
+   * sonidos listos, se muestra el loader en vez del juego.
+   * Así el primer render del juego ya sale 100% fluido.
+   */
+  if (loading) {
+    return <ChocolateLoader />;
+  }
 
   return (
 
