@@ -1,0 +1,416 @@
+.card {
+  width: 100%;
+  max-width: 400px;
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 32px;
+  padding: 28px 20px 24px;
+  text-align: center;
+  box-shadow: 0 20px 48px rgba(77, 56, 0, 0.18), 0 6px 16px rgba(0, 0, 0, 0.07);
+  z-index: 5;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0px;
+  opacity: 0;
+  animation: cardEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  contain: layout paint;
+  will-change: transform, opacity;
+  transform-origin: center;
+  backface-visibility: hidden;
+}
+
+/* Recorrido corto y scale suave a propósito: cuanto más grande el
+   desplazamiento/scale inicial, más área tiene que recomponer el
+   navegador en cada frame — en Android con box-shadow de por medio
+   eso se ve como si el contenedor se "cortara" al entrar. Con un
+   recorrido corto se ve igual de premium y es mucho más liviano. */
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Stagger: cada hijo entra con opacity+translateY, con delay incremental */
+.fadeItem {
+  opacity: 1;
+}
+
+.logoWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.halo {
+  position: absolute;
+  width: clamp(120px, 28vw, 160px);
+  height: clamp(120px, 28vw, 160px);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 229, 0, 0.55) 0%, transparent 70%);
+  z-index: 1;
+  animation: haloPulse 2.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes haloPulse {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.15); opacity: 0.55; }
+}
+
+.logoEmoji {
+  font-size: clamp(40px, 10vw, 70px);
+  position: relative;
+  z-index: 2;
+  user-select: none;
+  line-height: 1;
+  margin-top: -10px;
+}
+
+.title {
+  font-size: clamp(20px, 5vw, 28px);
+  font-weight: 900;
+  color: #4d3800;
+  margin-bottom: 8px;
+  margin-top: 4px;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+
+.subtitle {
+  font-size: clamp(13px, 3.5vw, 15px);
+  color: #7a6040;
+  margin-bottom: 16px;
+  margin-top: 0px;
+}
+
+.prizeBox {
+  font-size: clamp(13px, 3.5vw, 15px);
+  font-weight: 800;
+  margin-bottom: 15px;
+  padding: 13px;
+  border-radius: 16px;
+  background: #fff4c7;
+  border: 2px dashed #d9b100;
+  color: #3a2800;
+  line-height: 1.4;
+  width: 100%;
+}
+
+.divider {
+  width: 80px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #ffe500, #c47a00);
+  margin-bottom: 15px;
+}
+
+.steps {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.stepChip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 229, 0, 0.2);
+  border: 1.5px solid #ffe500;
+  cursor: pointer;
+  transition: background 0.25s ease, border-color 0.25s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.stepChip:active {
+  transform: scale(0.97);
+}
+
+.stepChipDone {
+  background: rgba(77, 56, 0, 0.1);
+  border: 1.5px solid #4d3800;
+  cursor: default;
+}
+
+.stepChipDone:active {
+  transform: none;
+}
+
+.stepIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+  background: #ffe500;
+  color: #4d3800;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.stepIconDone {
+  background: #4d3800;
+  color: #fff;
+}
+
+.stepLabel {
+  flex: 1;
+  text-align: left;
+  font-size: clamp(13px, 3.5vw, 15px);
+  color: #3a2800;
+  font-weight: 500;
+  transition: color 0.25s ease, font-weight 0.25s ease;
+}
+
+.stepLabelDone {
+  color: #4d3800;
+  font-weight: 700;
+}
+
+.stepArrow {
+  color: #c47a00;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.buttonWrap {
+  width: 100%;
+}
+
+.button {
+  width: 100%;
+  padding: 17px;
+  border-radius: 50px;
+  border: none;
+  background: linear-gradient(135deg, #4d3800, #7a5c00);
+  color: #fff;
+  font-size: clamp(16px, 4vw, 18px);
+  font-weight: 900;
+  letter-spacing: 1px;
+  box-shadow: 0 6px 16px rgba(77, 56, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+  transition: opacity 0.2s ease;
+  contain: layout paint;
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.buttonDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.buttonShine {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 229, 0, 0.3), transparent);
+  z-index: 0;
+  animation: buttonShine 3.2s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes buttonShine {
+  0% { transform: translateX(-100%); opacity: 1; }
+  56% { transform: translateX(280%); opacity: 1; }
+  57%, 100% { transform: translateX(280%); opacity: 0; }
+}
+
+.buttonLabel {
+  position: relative;
+  z-index: 1;
+}
+
+.termsBox {
+  margin-top: 15px;
+  margin-bottom: -5px;
+  background: #f5f1eb;
+  padding: 12px 14px;
+  border-radius: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.termsTitle {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: #4d3800;
+}
+
+.termsList {
+  padding-left: 12px;
+  margin: 0;
+  font-size: 12.5px;
+  color: #5e4b30;
+  line-height: 1.5;
+}
+
+/* Fondo con regalos flotando */
+.floatingGifts {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  contain: strict;
+}
+
+.giftParticle {
+  position: absolute;
+  bottom: -20px;
+  user-select: none;
+  will-change: transform;
+  animation-name: floatUp;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes floatUp {
+  0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(-105vh) rotate(20deg); opacity: 0; }
+}
+
+/* Modal de confirmación — ahora 100% CSS */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(20, 14, 0, 0.68);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+  padding: 20px;
+  box-sizing: border-box;
+  animation: overlayFadeIn 0.2s ease both;
+  contain: strict;
+}
+
+.modalOverlayExit {
+  animation: overlayFadeOut 0.18s ease both;
+}
+
+.modal {
+  width: 100%;
+  max-width: 360px;
+  background: #fffaf3;
+  border-radius: 24px;
+  padding: 24px 20px;
+  text-align: center;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+  animation: confirmModalIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  contain: layout paint;
+  will-change: transform, opacity;
+}
+
+.modalExit {
+  animation: confirmModalOut 0.18s ease both;
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes overlayFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes confirmModalIn {
+  from { opacity: 0; transform: scale(0.75) translateY(50px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes confirmModalOut {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.75) translateY(50px); }
+}
+
+.modalTitle {
+  font-size: 17px;
+  text-align: center;
+  font-weight: 900;
+  margin-bottom: 8px;
+  color: #4d3800;
+}
+
+.modalText {
+  font-size: 14px;
+  color: #7a6040;
+  margin-bottom: 18px;
+  line-height: 1.4;
+}
+
+.modalButtons {
+  display: flex;
+  gap: 10px;
+}
+
+.cancelButton,
+.confirmButton {
+  flex: 1;
+  padding: 13px;
+  border-radius: 50px;
+  border: none;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cancelButton {
+  background: #e6d3a3;
+  color: #4d3800;
+}
+
+.confirmButton {
+  background: linear-gradient(135deg, #4d3800, #7a5c00);
+  color: #fff;
+}
+
+.confirmButton:active,
+.cancelButton:active {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .fadeItem,
+  .halo,
+  .buttonShine,
+  .giftParticle,
+  .modalOverlay,
+  .modalOverlayExit,
+  .modal,
+  .modalExit {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}

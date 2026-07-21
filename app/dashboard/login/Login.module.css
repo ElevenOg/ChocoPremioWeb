@@ -1,0 +1,76 @@
+/* ==========================================================
+   Login.module.css
+========================================================== */
+
+.card {
+  opacity: 0;
+  animation: cardEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  contain: layout paint;
+  will-change: transform, opacity;
+  transform-origin: center;
+  backface-visibility: hidden;
+}
+
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Stagger de los hijos: mismo patrón que Intro/Result/Claim */
+.stagger {
+  opacity: 1;
+}
+
+/* Botón: feedback táctil con CSS puro (reemplaza whileTap de framer) */
+.button {
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Mensaje de error: truco de CSS Grid para animar el alto sin JS
+   (reemplaza a AnimatePresence + height:"auto" de framer-motion).
+   grid-template-rows 0fr -> 1fr anima de forma fluida y barata,
+   sin necesidad de medir el DOM ni tocar el hilo de JS. */
+.errorWrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    margin-top 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  margin-top: 0;
+}
+
+.errorWrapShow {
+  grid-template-rows: 1fr;
+  margin-top: 12px;
+}
+
+.errorInner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.errorContent {
+  opacity: 0;
+  transition: opacity 0.2s ease 0.05s;
+}
+
+.errorWrapShow .errorContent {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .stagger {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}

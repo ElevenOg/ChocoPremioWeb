@@ -1,0 +1,418 @@
+/* ==========================================================
+   Intro.module.css
+========================================================== */
+
+.card {
+  width: 100%;
+  max-width: 400px;
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 32px;
+  padding: 28px 20px 24px;
+  text-align: center;
+  box-shadow: 0 20px 48px rgba(77, 56, 0, 0.18), 0 6px 16px rgba(0, 0, 0, 0.07);
+  z-index: 5;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  animation: cardIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  contain: layout paint;
+  will-change: transform, opacity;
+  transform-origin: center;
+  backface-visibility: hidden;
+}
+
+.cardExit {
+  animation: cardOut 0.26s ease forwards;
+}
+
+/* Entrada más corta y menos escalada a propósito: cuanto más grande
+   el desplazamiento/scale inicial, más área tiene que recomponer el
+   navegador en cada frame (y en Android, con box-shadow grande de
+   por medio, eso es lo que se ve como "se corta" el contenedor).
+   Con un recorrido corto el resultado se ve igual de premium pero
+   el navegador prácticamente no tiene que trabajar. */
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes cardOut {
+  to {
+    opacity: 0;
+    transform: scale(0.97) translateY(-16px);
+  }
+}
+
+.logoWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.halo {
+  position: absolute;
+  width: clamp(120px, 28vw, 160px);
+  height: clamp(120px, 28vw, 160px);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 229, 0, 0.55) 0%, transparent 70%);
+  z-index: 1;
+  animation: haloPulse 2.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.logoImageBox {
+  position: relative;
+  width: clamp(50px, 8vw, 75px);
+  height: clamp(50px, 8vw, 75px);
+  z-index: 2;
+  margin-top: -10px;
+}
+
+.title {
+  font-size: clamp(20px, 5vw, 28px);
+  font-weight: 900;
+  color: #4d3800;
+  margin-bottom: 8px;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+
+.titleAccent {
+  color: #c47a00;
+  font-size: clamp(20px, 5vw, 28px);
+}
+
+.subtitle {
+  font-size: clamp(13px, 3.5vw, 15px);
+  color: #7a6040;
+  margin-bottom: 15px;
+  margin-top: 0;
+}
+
+.divider {
+  width: 80px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #ffe500, #c47a00);
+  margin-bottom: 15px;
+}
+
+.steps {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.buttonWrap {
+  width: 100%;
+}
+
+.button {
+  width: 100%;
+  padding: 17px;
+  border-radius: 50px;
+  border: none;
+  background: linear-gradient(135deg, #4d3800, #7a5c00);
+  color: #fff;
+  font-size: clamp(16px, 4vw, 18px);
+  font-weight: 900;
+  letter-spacing: 1px;
+  box-shadow: 0 6px 16px rgba(77, 56, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+  opacity: 0.45;
+  cursor: not-allowed;
+  transition: opacity 0.25s ease;
+  contain: layout paint;
+}
+
+.button.canPlay {
+  opacity: 1;
+  cursor: pointer;
+}
+
+.button:active.canPlay {
+  transform: scale(0.96);
+}
+
+.shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 229, 0, 0.3), transparent);
+  z-index: 0;
+  animation: shimmerSlide 3.2s ease-in-out infinite;
+  will-change: transform;
+}
+
+.buttonLabel {
+  position: relative;
+  z-index: 1;
+}
+
+.warning {
+  font-size: 12px;
+  color: #9a7a40;
+  margin-top: 15px;
+  margin-bottom: -5px;
+  text-align: center;
+  animation: fadeIn 0.2s ease both;
+}
+
+/* ---------- StepChip ---------- */
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 229, 0, 0.2);
+  border: 1.5px solid #ffe500;
+  cursor: pointer;
+  opacity: 1;
+  transition: background 0.25s ease, border-color 0.25s ease, opacity 0.25s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chip:active {
+  transform: scale(0.97);
+}
+
+.chip.done {
+  background: rgba(77, 56, 0, 0.1);
+  border-color: #4d3800;
+}
+
+.chip.locked {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.chipCircle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+  background: #ffe500;
+  color: #4d3800;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.chipCircle.done {
+  background: #4d3800;
+  color: #fff;
+}
+
+.chipCircle.locked {
+  background: #ccc;
+  color: #fff;
+}
+
+.chipLabel {
+  flex: 1;
+  text-align: left;
+  font-size: clamp(13px, 3.5vw, 15px);
+  color: #3a2800;
+  font-weight: 500;
+  transition: color 0.25s ease, font-weight 0.25s ease;
+}
+
+.chipLabel.done {
+  color: #4d3800;
+  font-weight: 700;
+}
+
+.chipLabel.locked {
+  color: #999;
+}
+
+.chipArrow {
+  color: #c47a00;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* ---------- Floating emojis ---------- */
+.floatingEmojis {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  contain: strict;
+}
+
+.floatingEmoji {
+  position: absolute;
+  bottom: -20px;
+  user-select: none;
+  will-change: transform;
+  animation-name: floatUp;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* ---------- Modal ----------
+   Antes: background rgba(0,0,0,0.55) + backdrop-filter: blur(4px).
+   El blur en tiempo real sobre todo el viewport es la operación más
+   costosa de todo el flujo en GPUs Android de gama media/baja: en cada
+   frame de la animación de entrada/salida el navegador tiene que
+   recomponer el blur sobre TODO lo que hay detrás. iOS/desktop lo
+   aceleran muy bien por hardware; Android en general no.
+   Se reemplaza por un overlay más oscuro y sólido (sin blur) que da
+   una sensación visual muy parecida, sin ese costo. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 14, 0, 0.68);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+  padding: 20px;
+  box-sizing: border-box;
+  animation: fadeIn 0.22s ease both;
+  contain: strict;
+}
+
+.modal {
+  width: 100%;
+  max-width: 360px;
+  max-height: 80vh;
+  background: #fffaf3;
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+  animation: modalIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  contain: layout paint;
+  will-change: transform, opacity;
+}
+
+@media (min-width: 768px) {
+  .modal {
+    max-width: 520px;
+  }
+}
+
+.modalContent {
+  padding: 24px 20px;
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-color: #4d3800 #e6d3a3;
+  scrollbar-width: thin;
+  /* evita que el scroll del modal "empuje" el scroll de la página
+     detrás en Android (causa habitual de sensación de traba) */
+  overscroll-behavior: contain;
+}
+
+.modalTitle {
+  font-size: 17px;
+  text-align: center;
+  font-weight: 900;
+  margin-bottom: 12px;
+  color: #4d3800;
+}
+
+.modalList {
+  text-align: left;
+  font-size: 14px;
+  margin-bottom: 14px;
+  color: #3a2800;
+  line-height: 1.8;
+  padding-left: 4px;
+}
+
+.modalNote {
+  font-size: 14px;
+  text-align: center;
+  margin-top: 20px;
+  margin-bottom: 20px;
+  color: #7a6040;
+}
+
+.modalButton {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  background: #4d3800;
+  color: #fff;
+  font-weight: 900;
+  font-size: 16px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+/* ---------- Keyframes ---------- */
+@keyframes floatUp {
+  0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(-105vh) rotate(20deg); opacity: 0; }
+}
+
+@keyframes haloPulse {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.15); opacity: 0.55; }
+}
+
+@keyframes shimmerSlide {
+  0% { transform: translateX(-100%); opacity: 1; }
+  55% { transform: translateX(280%); opacity: 1; }
+  56%, 100% { transform: translateX(280%); opacity: 0; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes growX {
+  from { transform: scaleX(0); opacity: 0; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.93) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #e6d3a3;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #4d3800;
+  border-radius: 10px;
+}

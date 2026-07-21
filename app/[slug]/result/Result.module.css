@@ -1,0 +1,214 @@
+.card {
+  width: 100%;
+  max-width: 400px;
+  background: #fff;
+  border-radius: 30px;
+  padding: 32px 28px;
+  text-align: center;
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  will-change: transform, opacity;
+  contain: layout paint;
+  transform-origin: center;
+  backface-visibility: hidden;
+
+  /* Recorrido corto y scale suave a propósito */
+  
+  animation: cardEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cardEnter {
+  from {
+    transform: scale(0.94) translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Stagger de los hijos vía animation-delay en CSS puro,
+   en vez de una motion.* independiente por elemento. */
+.fadeUp {
+  opacity: 1;
+}
+
+.halo {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  width: 180px;
+  height: 180px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  animation: resultHaloPulse 2.4s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes resultHaloPulse {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateX(-50%) scale(1.18);
+    opacity: 0.85;
+  }
+}
+
+.iconBox {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  margin: 0 auto 22px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+  will-change: transform, opacity;
+}
+
+/* Dos variantes de entrada del icono: una simple (lose) y una
+   con "rebote" (celebración), reemplazando los dos transition
+   distintos que antes vivían en JS. */
+.iconLose {
+  animation: iconLoseEnter 0.4s ease-out both;
+}
+
+@keyframes iconLoseEnter {
+  from {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.iconWin {
+  animation: iconWinEnter 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 0.06s both;
+}
+
+@keyframes iconWinEnter {
+  from {
+    transform: scale(0.5) rotate(-14deg);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 900;
+  margin-bottom: 10px;
+  letter-spacing: -0.3px;
+}
+
+.subtitle {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 8px;
+  color: #1a1a1a;
+}
+
+.prize {
+  font-size: 16px;
+  margin-bottom: 24px;
+  color: #555;
+}
+
+.buttonWrap {
+  width: 100%;
+}
+
+.button {
+  width: 100%;
+  padding: 16px;
+  border-radius: 50px;
+  border: none;
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.15s ease;
+}
+
+.button:active {
+  transform: scale(0.97);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+}
+
+.buttonClaim {
+  position: relative;
+  overflow: hidden;
+}
+
+.buttonShine {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  z-index: 0;
+  animation: buttonShineSlide 2.8s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes buttonShineSlide {
+  0% {
+    transform: translateX(-120%);
+    opacity: 1;
+  }
+  57% {
+    transform: translateX(220%);
+    opacity: 1;
+  }
+  58%,
+  100% {
+    transform: translateX(220%);
+    opacity: 0;
+  }
+}
+
+.buttonLabel {
+  position: relative;
+  z-index: 1;
+}
+
+.loaderOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  transition-property: opacity;
+  transition-timing-function: ease;
+}
+
+/* Respeta a quienes prefieren menos movimiento en pantalla. */
+@media (prefers-reduced-motion: reduce) {
+  .halo,
+  .buttonShine,
+  .card,
+  .fadeUp,
+  .iconLose,
+  .iconWin {
+    animation: none !important;
+  }
+}
