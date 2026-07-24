@@ -1,21 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import { playSound, preloadSounds } from "../../components/AudioManager";
 import { getConfettiFire, fireConfetti, tierOf } from "./confetti";
 import { MIN_LOADING_MS, consumeNavStart, markNavStart } from "../../components/loaderConfig";
-import {
-  Prize,
-  ResultData,
-  pickPrize,
-  getFirstPool,
-  getRetryPool,
-  safeGet,
-  safeSet,
-  safeRemove,
-  getCachedPrizes,
-  setCachedPrizes
-} from "./resultUtils";
+import { Prize, ResultData, safeGet, safeSet, safeRemove } from "./resultUtils";
 
 function safePlay(name: Parameters<typeof playSound>[0]) {
   try {
@@ -138,101 +126,31 @@ export function useResult() {
       try {
         if (!sessionId) return;
 
-        const { data: session, error: sessionError } = await supabase
-          .from("game_sessions")
-          .select("id, campaign_id, prize_id, won")
-          .eq("id", sessionId)
-          .single();
-
-        if (sessionError || !session) {
-          console.error("SESSION ERROR", sessionError);
-          return;
-        }
-
-        let prizes = getCachedPrizes(session.campaign_id);
-
-        if (!prizes) {
-          const { data: fetchedPrizes, error: prizesError } = await supabase
-            .from("prizes")
-            .select("*")
-            .eq("campaign_id", session.campaign_id);
-
-          if (prizesError || !fetchedPrizes || fetchedPrizes.length === 0) {
-            console.error("PRIZES ERROR", prizesError);
-            return;
-          }
-
-          prizes = fetchedPrizes as Prize[];
-          setCachedPrizes(session.campaign_id, prizes);
-        }
-
-        const startReveal = async (prize: Prize) => {
-          const isCelebration = prize.type !== "lose" && prize.type !== "retry";
-
-          await Promise.all([
-            soundsReadyRef.current,
-            isCelebration ? getConfettiFire().catch(() => null) : Promise.resolve()
-          ]);
-
-          await reveal();
-          setShow(true);
-          runEffects(prize);
-        };
-
-        if (session.prize_id) {
-          const existingPrize = (prizes as Prize[]).find((p) => p.id === session.prize_id);
-          if (existingPrize) {
-            setResult({ won: session.won, prize: existingPrize });
-            await startReveal(existingPrize);
-            return;
-          }
-        }
-
+        // El sorteo y el guardado en game_sessions (won, prize_id,
+        // prize_type, prize_title, game_status) ocurren en el
+        // servidor, dentro de /api/session/result — el navegador
+        // solo recibe el resultado ya decidido y confirmado en DB.
         const retryMode = safeGet(sessionStorage, `retry_${sessionId}`) === "true";
-        const availablePrizes = retryMode
-          ? getRetryPool(prizes as Prize[])
-          : getFirstPool(prizes as Prize[]);
 
-        if (availablePrizes.length === 0) {
-          console.error("NO AVAILABLE PRIZES");
+        const res = await fetch("/api/session/result", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, retry: retryMode }),
+        });
+
+        if (!res.ok) {
+          console.error("RESULT ERROR", await res.text());
           return;
         }
 
-        const selectedPrize = pickPrize(availablePrizes);
+        const finalResult: ResultData = await res.json();
+        const isCelebration =
+          finalResult.prize.type !== "lose" && finalResult.prize.type !== "retry";
 
-        const finalResult: ResultData = {
-          won: selectedPrize.type !== "lose" && selectedPrize.type !== "retry",
-          prize: selectedPrize
-        };
-
-        const updatePromise = supabase
-          .from("game_sessions")
-          .update({
-            won: finalResult.won,
-            prize_id: selectedPrize.id,
-            prize_type: selectedPrize.type,
-            prize_title: selectedPrize.title,
-            game_status:
-              selectedPrize.type === "lose"
-                ? "LOSE"
-                : selectedPrize.type === "retry"
-                ? "RETRY"
-                : "WIN"
-          })
-          .eq("id", sessionId);
-
-        const isCelebration = finalResult.won;
-
-        const [{ error: updateError }] = await Promise.all([
-          updatePromise,
+        await Promise.all([
           soundsReadyRef.current,
-          isCelebration ? getConfettiFire().catch(() => null) : Promise.resolve()
+          isCelebration ? getConfettiFire().catch(() => null) : Promise.resolve(),
         ]);
-
-        if (updateError) {
-          console.error("UPDATE ERROR", updateError);
-          return;
-        }
 
         if (retryMode) {
           safeRemove(sessionStorage, `retry_${sessionId}`);
@@ -241,7 +159,7 @@ export function useResult() {
         setResult(finalResult);
         await reveal();
         setShow(true);
-        runEffects(selectedPrize);
+        runEffects(finalResult.prize);
       } catch (error) {
         console.error("RESULT ERROR", error);
       }
@@ -284,19 +202,15 @@ export function useResult() {
     safeSet(sessionStorage, `retry_${sessionId}`, "true");
     safeRemove(sessionStorage, `effects_played_${sessionId}`);
 
-    supabase
-      .from("game_sessions")
-      .update({
-        prize_id: null,
-        prize_type: null,
-        prize_title: null,
-        won: false,
-        game_status: "PENDING"
-      })
-      .eq("id", sessionId)
-      .then(({ error }) => {
-        if (error) console.error("RETRY UPDATE ERROR", error);
-      });
+    // Reinicia el registro en game_sessions (prize_id, prize_type,
+    // prize_title -> null, won -> false, game_status -> PENDING)
+    // en el servidor, para que el próximo /api/session/result
+    // vuelva a sortear en vez de devolver el premio anterior.
+    fetch("/api/session/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    }).catch((err) => console.error("RETRY ERROR", err));
 
     markNavStart();
     router.push(`/${slug}/game?session=${sessionId}`);
@@ -313,13 +227,12 @@ export function useResult() {
       // noop
     }
 
-    supabase
-      .from("game_sessions")
-      .update({ claimed_prize: true })
-      .eq("id", sessionId)
-      .then(({ error }) => {
-        if (error) console.error(error);
-      });
+    // Marca claimed_prize = true en game_sessions, en el servidor.
+    fetch("/api/session/claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId }),
+    }).catch((err) => console.error("CLAIM ERROR", err));
 
     markNavStart();
     router.push(`/${slug}/claim?session=${sessionId}`);

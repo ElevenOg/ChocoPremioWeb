@@ -38,7 +38,7 @@ export default function Footer() {
                 href="#Comofunciona"
                 className="text-[#f3e6c8] transition hover:text-white"
               >
-                Cómo funciona
+                Cómo Funciona
               </a>
             </li>
 
@@ -57,6 +57,24 @@ export default function Footer() {
                 className="text-[#f3e6c8] transition hover:text-white"
               >
                 Premios
+              </a>
+            </li>
+
+            <li>
+              <a
+                href="#sobrechocopremio"
+                className="text-[#f3e6c8] transition hover:text-white"
+              >
+                Sobre ChocoPremio
+              </a>
+            </li>
+
+            <li>
+              <a
+                href="#activatumarca"
+                className="text-[#f3e6c8] transition hover:text-white"
+              >
+                Activa Tu Marca
               </a>
             </li>
 

@@ -4,13 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, User, Eye, EyeOff, Sparkles, AlertCircle } from "lucide-react";
 
-import { supabase } from "@/lib/supabase";
 import ChocolateLoader from "@/app/components/ChocolateLoader";
-import { MIN_LOADING_MS, markNavStart } from "../../components/loaderConfig";
+import { markNavStart } from "../../components/loaderConfig";
 import useBlockZoom from "../../components/useBlockZoom";
 import styles from "./Login.module.css";
 
-// Badge reutilizable (idéntico al de la Home)
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-[#ead9b3] bg-white px-4 py-2 text-[10px] font-bold tracking-[0.2em] text-[#4d3800] shadow-sm md:text-xs">
@@ -21,8 +19,6 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 
 export default function DashboardLogin() {
   const router = useRouter();
-
-  // Bloquea el zoom (pinch y doble toque) en esta página
   useBlockZoom();
 
   const [username, setUsername] = useState("");
@@ -53,25 +49,23 @@ export default function DashboardLogin() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase
-        .from("commerces")
-        .select("*")
-        .eq("username", cleanUsername)
-        .eq("password", cleanPassword)
-        .eq("active", true)
-        .single();
+      const res = await fetch("/api/dashboard/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: cleanUsername, password: cleanPassword }),
+      });
 
-      if (error || !data) {
-        setError("Usuario o contraseña incorrectos");
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Usuario o contraseña incorrectos");
         setLoading(false);
         return;
       }
 
-      sessionStorage.setItem("dashboard_commerce", JSON.stringify(data));
-
-      // Marca el inicio del loader
+      // Ya no se guarda nada sensible en sessionStorage: la sesión
+      // vive en una cookie httpOnly que el navegador maneja solo.
       markNavStart();
-
       setRedirecting(true);
 
       requestAnimationFrame(() => {
@@ -85,25 +79,19 @@ export default function DashboardLogin() {
   }, [username, password, loading, router]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleLogin();
-    }
+    if (e.key === "Enter") handleLogin();
   };
 
-  if (redirecting) {
-    return <ChocolateLoader />;
-  }
+  if (redirecting) return <ChocolateLoader />;
 
   return (
     <>
-      {/* Fondo fijo, idéntico al de la Home */}
       <div
         className="fixed inset-0 z-0 bg-linear-to-b from-white via-[#fff6e4] to-[#f6ddb1]"
         aria-hidden="true"
       />
 
       <main className="relative z-10 flex h-dvh items-center justify-center overflow-hidden px-5 text-[#4d3800]">
-        {/* Tarjeta de login — animación 100% CSS (antes framer-motion) */}
         <div
           className={`${styles.card} relative z-10 w-full max-w-100 rounded-[30px] bg-white/95 p-7 text-center shadow-[0_20px_56px_rgba(0,0,0,0.2)] ring-1 ring-black/5 backdrop-blur-sm`}
         >
@@ -130,7 +118,6 @@ export default function DashboardLogin() {
           </p>
 
           <div className={`${styles.stagger} ${styles.d4} mt-7 space-y-3 text-left`}>
-            {/* Usuario */}
             <div className="relative">
               <User
                 className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#b39a6d]"
@@ -148,7 +135,6 @@ export default function DashboardLogin() {
               />
             </div>
 
-            {/* Contraseña */}
             <div className="relative">
               <Lock
                 className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#b39a6d]"
@@ -170,16 +156,11 @@ export default function DashboardLogin() {
                 aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                 className="absolute right-4 top-1/2 -translate-y-1/2 text-[#b39a6d] transition-colors hover:text-[#4d3800]"
               >
-                {showPassword ? (
-                  <EyeOff className="h-5 w-5" strokeWidth={2} />
-                ) : (
-                  <Eye className="h-5 w-5" strokeWidth={2} />
-                )}
+                {showPassword ? <EyeOff className="h-5 w-5" strokeWidth={2} /> : <Eye className="h-5 w-5" strokeWidth={2} />}
               </button>
             </div>
           </div>
 
-          {/* Error — animado con CSS Grid trick, sin AnimatePresence */}
           <div className={`${styles.errorWrap} ${error ? styles.errorWrapShow : ""}`}>
             <div className={styles.errorInner}>
               <div className={`${styles.errorContent} flex items-center justify-center gap-1.5 text-sm font-bold text-[#b23b3b]`}>

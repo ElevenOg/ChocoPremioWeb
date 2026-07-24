@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
-import { supabase } from "@/lib/supabase";
 import ChocolateLoader from "../components/ChocolateLoader";
 import ChocolateBackground from "../components/ChocolateBackground";
 import useBlockBackNavigation from "../components/useBlockBackNavigation";
@@ -117,7 +116,7 @@ export default function Intro() {
 
   // Marca cuándo arrancó el loader; finishLoading() usa esto para
   // sostener el loader un mínimo de MIN_LOADING_MS, igual que Game,
-  // Result y Claim, sin importar qué tan rápido responda Supabase.
+  // Result y Claim, sin importar qué tan rápido responda la API.
   const startedAt = useRef(Date.now());
 
   const router = useRouter();
@@ -163,49 +162,49 @@ export default function Intro() {
       patchFlow({ followed: followedSession, accepted: acceptedSession });
     }
 
+    // Toda la creación/recuperación de sesión de juego ahora vive
+    // en el servidor (/api/session/start), usando el service_role
+    // de Supabase. El navegador nunca vuelve a tocar la tabla
+    // commerces ni game_sessions directamente.
     const loadCommerce = async () => {
-      const existingSessionId = sessionStorage.getItem("intro_session_id");
+      try {
+        const existingSessionId = sessionStorage.getItem("intro_session_id");
+        
+        const res = await fetch("/api/session/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+           slug: params.slug,
+           existingSessionId,
+         }),
 
-      if (existingSessionId) {
-        const { data, error } = await supabase
-          .from("commerces")
-          .select("id, slug, social_url")
-          .eq("slug", params.slug)
-          .maybeSingle();
+        });
 
         if (!active) return;
-        if (error || !data) {
-          console.error(error);
+
+        if (!res.ok) {
+          console.error("SESSION START ERROR", await res.text());
           setCommerce(null);
-        } else {
-          setCommerce(data);
-          setSessionId(existingSessionId);
+          finishLoading();
+          return;
         }
+
+        const data = await res.json();
+
+        setCommerce({
+          id: data.commerce_id,
+          slug: data.slug,
+          social_url: data.social_url
+        });
+        setSessionId(data.session_id);
+        sessionStorage.setItem("intro_session_id", data.session_id);
         finishLoading();
-        return;
-      }
-
-      const { data, error } = await supabase.rpc("start_intro_session", {
-        p_slug: params.slug
-      });
-
-      if (!active) return;
-
-      if (error || !data) {
-        console.error(error);
+      } catch (err) {
+        if (!active) return;
+        console.error("SESSION START ERROR", err);
         setCommerce(null);
         finishLoading();
-        return;
       }
-
-      setCommerce({
-        id: data.commerce_id,
-        slug: data.slug,
-        social_url: data.social_url
-      });
-      setSessionId(data.session_id);
-      sessionStorage.setItem("intro_session_id", data.session_id);
-      finishLoading();
     };
 
     loadCommerce();
@@ -244,14 +243,13 @@ export default function Intro() {
     sessionStorage.setItem("followed", "true");
 
     if (sessionId) {
-      supabase
-        .from("game_sessions")
-        .update({ clicked_social: true })
-        .eq("id", sessionId)
-        .then(({ error }) => {
-          if (error) console.error(error);
-        });
+      fetch("/api/session/social", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      }).catch((err) => console.error("SOCIAL ERROR", err));
     }
+    
   }, [playClick, commerce, sessionId, patchFlow]);
 
   const handleStartGame = useCallback(() => {
@@ -259,13 +257,11 @@ export default function Intro() {
     patchFlow({ startingGame: true, cardVisible: false });
 
     if (sessionId) {
-      supabase
-        .from("game_sessions")
-        .update({ played: true })
-        .eq("id", sessionId)
-        .then(({ error }) => {
-          if (error) console.error(error);
-        });
+      fetch("/api/session/play", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      }).catch((err) => console.error("PLAY ERROR", err));
     }
 
     navTimeout.current = setTimeout(() => {

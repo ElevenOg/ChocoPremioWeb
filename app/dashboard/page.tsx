@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import ChocolateLoader from "@/app/components/ChocolateLoader";
 import { MIN_LOADING_MS, consumeNavStart } from "../components/loaderConfig";
 import useBlockZoom from "../components/useBlockZoom";
@@ -315,34 +314,36 @@ export default function DashboardPage() {
 
   const logout = useCallback(
     (reason?: "idle") => {
+      setLoggingOut(true);
 
-      setTimeout(() => {
-        sessionStorage.removeItem("dashboard_commerce");
-        router.replace(reason === "idle" ? "/dashboard/login?motivo=inactividad" : "/dashboard/login");
+      setTimeout(async () => {
+        await fetch("/api/dashboard/logout", { method: "POST" }).catch(() => {});
+        router.replace(
+          reason === "idle" ? "/dashboard/login?motivo=inactividad" : "/dashboard/login"
+        );
       }, 550);
     },
     [router]
   );
 
+  /* ───────── CARGA INICIAL: comercio + campañas ───────── */
+
   useEffect(() => {
-    const stored = sessionStorage.getItem("dashboard_commerce");
+    fetch("/api/dashboard/campaigns")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data) => {
+        setCommerce(data.commerce);
+        setCampaigns(data.campaigns);
 
-    if (!stored) {
-      router.replace("/dashboard/login");
-      return;
-    }
+        const active = data.campaigns.find((c: Campaign) => c.active);
+        setSelectedCampaign(active?.id || data.campaigns[0]?.id || null);
 
-    try {
-      setCommerce(JSON.parse(stored));
-    } catch {
-      logout();
-      return;
-    }
-
-    setHydrated(true);
-    // logout solo se usa dentro del catch de parseo; no depende de estado externo
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        setHydrated(true);
+      })
+      .catch(() => router.replace("/dashboard/login"));
   }, [router]);
+
+  /* ───────── IDLE TIMEOUT ───────── */
 
   useEffect(() => {
     if (!hydrated) return;
@@ -362,65 +363,28 @@ export default function DashboardPage() {
     };
   }, [hydrated, logout]);
 
-  /* ───────── LOAD ───────── */
+  /* ───────── LOAD SESSIONS (por campaña) ───────── */
 
   useEffect(() => {
-    if (!commerce?.id) return;
+    if (!selectedCampaign) return;
 
     const load = async () => {
-      const { data } = await supabase.from("campaigns").select("*").eq("commerce_id", commerce.id);
-      const safe = (data || []) as Campaign[];
-      setCampaigns(safe);
+      const res = await fetch(`/api/dashboard/sessions?campaignId=${selectedCampaign}`);
 
-      const active = safe.find((c) => c.active);
-      setSelectedCampaign(active?.id || safe[0]?.id || null);
+      if (!res.ok) return;
+
+      const data = await res.json();
+      setSessions(data.sessions);
+
+      const startedAt = consumeNavStart();
+      const elapsed = Date.now() - startedAt;
+      const remaining = Math.max(0, MIN_LOADING_MS - elapsed);
+
+      setTimeout(() => setReady(true), remaining);
     };
 
     load();
-  }, [commerce]);
-
-  useEffect(() => {
-    if (!commerce?.id || !selectedCampaign) return;
-
-    const load = async () => {
-      const pageSize = 1000;
-      let from = 0;
-      let all: GameSession[] = [];
-
-      while (true) {
-        const { data, error } = await supabase
-          .from("game_sessions")
-          .select("*")
-          .eq("commerce_id", commerce.id)
-          .eq("campaign_id", selectedCampaign)
-          .range(from, from + pageSize - 1);
-
-        if (error) {
-          console.error("SUPABASE ERROR:", error);
-          break;
-        }
-
-        if (!data || data.length === 0) break;
-
-        all = [...all, ...(data as GameSession[])];
-
-        if (data.length < pageSize) break;
-        from += pageSize;
-      }
-
-      setSessions(all);
-
-const startedAt = consumeNavStart();
-const elapsed = Date.now() - startedAt;
-const remaining = Math.max(0, MIN_LOADING_MS - elapsed);
-
-setTimeout(() => {
-  setReady(true);
-}, remaining);
-    };
-
-    load();
-  }, [commerce, selectedCampaign]);
+  }, [selectedCampaign]);
 
   /* ───────── METRICS ───────── */
 
@@ -485,8 +449,8 @@ setTimeout(() => {
   }, [campaigns]);
 
   if (!hydrated || !commerce || !ready) {
-  return <ChocolateLoader />;
-}
+    return <ChocolateLoader />;
+  }
 
   /* ───────── RENDER ───────── */
 
@@ -914,7 +878,6 @@ setTimeout(() => {
           </section>
         </main>
       </div>
-      
     </>
   );
 }

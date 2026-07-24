@@ -576,7 +576,7 @@ export default function Home() {
         </section>
 
         {/* SOBRE CHOCOPREMIO */}
-        <section className={`${SECTION_SPACING} mb-7 md:mb-10`}>
+        <section id="sobrechocopremio" className={`${SECTION_SPACING} mb-7 md:mb-10`}>
           <motion.div
             variants={fadeUp}
             initial="hidden"
@@ -600,7 +600,7 @@ export default function Home() {
         </section>
 
         {/* EXPERIENCIA / CTA WHATSAPP */}
-        <section className="px-5 pt-0 pb-8 md:pt-0 md:pb-12 mb-10 md:mb-20">
+        <section id="activatumarca" className="px-5 pt-0 pb-8 md:pt-0 md:pb-12 mb-10 md:mb-20">
           <div className="mx-auto max-w-4xl">
             <motion.div
               variants={fadeUp}
