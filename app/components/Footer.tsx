@@ -6,7 +6,15 @@ import Image from "next/image";
 
 export default function Footer() {
   return (
-    <footer className="border-t border-[#6b4b1f]/20 bg-[#4d3800] text-white">
+    <footer
+  className="bg-[#4d3800] text-white"
+  style={{
+    transform: "translateZ(0)",
+    WebkitTransform: "translateZ(0)",
+    backfaceVisibility: "hidden",
+    WebkitBackfaceVisibility: "hidden",
+  }}
+>
       <div className="mx-auto grid max-w-6xl gap-10 px-5 py-12 text-center md:grid-cols-4 md:text-left">
         {/* LOGO / DESCRIPCIÓN */}
         <div className="flex flex-col items-center gap-3 md:items-start">

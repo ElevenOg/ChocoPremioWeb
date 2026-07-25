@@ -423,11 +423,17 @@ export default function Home() {
           sin importar el scroll (position: fixed, no depende de bg-attachment que
           falla en Safari / iOS). */}
       <div
-        className="fixed inset-0 z-0 bg-linear-to-b from-white via-[#fff6e4] to-[#f6ddb1]"
+        className="fixed inset-0 -z-10 bg-linear-to-b from-white via-[#fff6e4] to-[#f6ddb1] transform-gpu"
         aria-hidden="true"
       />
 
-      <main className="relative z-10 min-h-screen text-[#4d3800]">
+      <main
+  className="relative min-h-screen text-[#4d3800]"
+  style={{
+    transform: "translateZ(0)",
+    WebkitTransform: "translateZ(0)",
+  }}
+>
         {/* Chocolate derretido decorativo */}
         <div
           className="pointer-events-none absolute left-0 top-0 z-50 w-full"
