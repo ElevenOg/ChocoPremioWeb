@@ -68,9 +68,8 @@ export default function DashboardLogin() {
       markNavStart();
       setRedirecting(true);
 
-      requestAnimationFrame(() => {
-        router.replace("/dashboard");
-      });
+      window.location.href = "/dashboard";
+
     } catch (err) {
       console.error(err);
       setError("Error al iniciar sesión");
