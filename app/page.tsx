@@ -670,7 +670,7 @@ export default function Home() {
                 <div className="mx-auto h-px w-16 bg-[#ead9b3]" aria-hidden="true" />
 
                 <p className="max-w-md text-base leading-7 text-[#6b4f2a] md:text-lg">
-                  En Choco Premio Experiencias convertimos un simple chocolate en una
+                  En Choco Premio Experiencias convertimos un chocolate en una
                   experiencia que conecta personas con marcas, genera emoción y crea
                   recuerdos que permanecen.
                 </p>
