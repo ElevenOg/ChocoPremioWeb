@@ -1,0 +1,22 @@
+.card { isolation:isolate; }
+.winner { border-color:#d9a441; }
+.shine { position:absolute; inset:0; border-radius:inherit; overflow:hidden; pointer-events:none; z-index:-1; }
+.shine::before { content:""; position:absolute; top:-20%; left:-60%; width:40%; height:140%; background:linear-gradient(90deg,transparent,#f5d99370,transparent); opacity:0; animation:shine 5s ease-out .12s infinite; }
+.gift { position:relative; }
+.confetti { position:absolute; inset:0; pointer-events:none; z-index:1; }
+.confetti i { position:absolute; left:50%; top:12%; width:5px; height:9px; border-radius:1px; background:#d9a441; opacity:0; animation:spark 3s cubic-bezier(.15,.6,.3,1) var(--delay) both; }
+.confetti i:nth-child(3n) { background:#b96183; border-radius:50%; width:6px; height:6px; }
+.confetti i:nth-child(3n + 1) { background:#568c72; }
+@keyframes shine {
+  0% { opacity:0; transform:translateX(0) skewX(-18deg); }
+  3% { opacity:1; }
+  24%,100% { opacity:0; transform:translateX(450%) skewX(-18deg); }
+}
+@keyframes spark {
+  0% { opacity:0; transform:translate3d(0,0,0) rotate(0) scale(.5); }
+  8% { opacity:1; }
+  45% { opacity:1; transform:translate3d(calc(var(--x) * .55),var(--peak),0) rotate(calc(var(--turn) * .45)) scale(1); }
+  80% { opacity:1; }
+  100% { opacity:0; transform:translate3d(var(--x),var(--y),0) rotate(var(--turn)) scale(.85); }
+}
+@media(prefers-reduced-motion:reduce) { .shine,.confetti { display:none; } }

@@ -1,6 +1,3 @@
-/* ==========================================================
-   Login.module.css
-========================================================== */
 
 .card {
   opacity: 0;
@@ -22,12 +19,10 @@
   }
 }
 
-/* Stagger de los hijos: mismo patrón que Intro/Result/Claim */
 .stagger {
   opacity: 1;
 }
 
-/* Botón: feedback táctil con CSS puro (reemplaza whileTap de framer) */
 .button {
   transition: opacity 0.15s ease, transform 0.12s ease;
 }
@@ -36,10 +31,6 @@
   transform: scale(0.97);
 }
 
-/* Mensaje de error: truco de CSS Grid para animar el alto sin JS
-   (reemplaza a AnimatePresence + height:"auto" de framer-motion).
-   grid-template-rows 0fr -> 1fr anima de forma fluida y barata,
-   sin necesidad de medir el DOM ni tocar el hilo de JS. */
 .errorWrap {
   display: grid;
   grid-template-rows: 0fr;

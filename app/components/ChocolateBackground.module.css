@@ -1,0 +1,17 @@
+.background { min-height:100dvh; width:100%; display:flex; justify-content:center; align-items:center; padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left)); position:relative; overflow:hidden; background:var(--cp-background-game); }
+.content { position:relative; width:100%; z-index:5; display:flex; align-items:center; justify-content:center; }
+.topGlow,.bottomGlow { position:absolute; left:50%; transform:translateX(-50%); border-radius:50%; pointer-events:none; }
+.topGlow { top:-200px; width:800px; height:400px; background:#ffffff59; filter:blur(100px); }
+.bottomGlow { bottom:-250px; width:700px; height:350px; background:#ffd77847; filter:blur(120px); }
+.floating1,.floating2 { position:absolute; width:clamp(55px,6vw,70px); z-index:4; pointer-events:none; filter:drop-shadow(0 6px 12px #0003); }
+.floating1 svg,.floating2 svg { display:block; width:100%; height:auto; }
+.floating1 { top:5%; left:8%; animation:float1 6s ease-in-out infinite; }
+.floating2 { bottom:5%; right:8%; animation:float2 6.5s ease-in-out infinite; }
+.bubble1,.bubble2 { position:absolute; border-radius:50%; pointer-events:none; }
+.bubble1 { top:22%; right:12%; width:160px; height:160px; background:#ffffff33; filter:blur(40px); animation:bubble1 6s ease-in-out infinite; }
+.bubble2 { bottom:18%; left:10%; width:200px; height:200px; background:#ffd27838; filter:blur(45px); animation:bubble2 7s ease-in-out infinite; }
+@keyframes float1 { 50% { transform:translateY(-12px) rotate(3deg) scale(1.04); } }
+@keyframes float2 { 50% { transform:translateY(12px) rotate(-3deg) scale(1.04); } }
+@keyframes bubble1 { 50% { transform:translateY(-30px); opacity:.6; } }
+@keyframes bubble2 { 50% { transform:translateY(25px); opacity:.55; } }
+@media(prefers-reduced-motion:reduce) { .floating1,.floating2,.bubble1,.bubble2 { animation:none; } }

@@ -1,0 +1,10 @@
+.pending { position:relative; }
+.label { display:inline-flex; align-items:center; justify-content:center; gap:inherit; transition:opacity .16s ease,filter .16s ease; }
+.pending[data-loading="true"] .label { opacity:0; filter:blur(3px); }
+.spinner { position:absolute; inset:0; display:grid; place-items:center; opacity:0; pointer-events:none; transition:opacity .16s ease; }
+.spinner::after { content:""; width:21px; height:21px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:spin .7s linear infinite; animation-play-state:paused; }
+.pending[data-loading="true"] .spinner { opacity:1; transition-delay:.1s; }
+.pending[data-loading="true"] .spinner::after { animation-play-state:running; }
+.pending[data-loading="true"]:disabled { opacity:1; cursor:wait; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@media(prefers-reduced-motion:reduce) { .label,.spinner { transition:none; filter:none!important; } .spinner::after { animation:none; } }

@@ -1,156 +1,110 @@
-"use client";
-
-import Link from "next/link";
-
 import Image from "next/image";
+import { ButtonLink } from "./ui/Button";
+
+
+const links = [
+  ["#Comofunciona", "Cómo funciona"],
+  ["#experiencia", "Experiencia"],
+  ["#premios", "Premios"],
+  ["#sobrechocopremio", "Sobre ChocoPremio"],
+  ["#activatumarca", "Activa tu marca"],
+];
 
 export default function Footer() {
   return (
-    <footer
-  className="bg-[#4d3800] text-white"
-  style={{
-    transform: "translateZ(0)",
-    WebkitTransform: "translateZ(0)",
-    backfaceVisibility: "hidden",
-    WebkitBackfaceVisibility: "hidden",
-  }}
->
-      <div className="mx-auto grid max-w-6xl gap-10 px-5 py-12 text-center md:grid-cols-4 md:text-left">
-        {/* LOGO / DESCRIPCIÓN */}
-        <div className="flex flex-col items-center gap-3 md:items-start">
-          <img
+    <footer className="bg-[#4d3800] text-white">
+      <div className="mx-auto grid max-w-6xl gap-8 px-5 py-10 text-center sm:grid-cols-2 sm:text-left lg:grid-cols-4 lg:gap-10 lg:py-12">
+        <div className="flex min-w-0 flex-col items-center gap-3 sm:items-start">
+          <Image
             src="/images/logoCP.webp"
-            alt="LogoCP"
+            width={468}
+            height={644}
+            unoptimized
+            alt="ChocoPremio"
             draggable={false}
-            className="w-25 md:w-35 select-none"
-        />
+            className="h-auto w-25 select-none"
+          />
 
-          <h3 className="text-2xl font-black">
+          <h2 className="text-xl font-black">
             CHOCOPREMIO
-          </h3>
+          </h2>
 
-          <p className="max-w-xs text-sm leading-relaxed text-[#f3e6c8]">
-            ChocoPremio transforma cada chocolate en una experiencia interactiva llena de sorpresas.
+          <p className="max-w-xs text-sm leading-6 text-[#f3e6c8]">
+            ChocoPremio transforma cada chocolate en una
+            experiencia interactiva llena de sorpresas.
           </p>
         </div>
 
-        {/* NAVEGACIÓN */}
-        <div>
-          <h3 className="mb-4 text-lg font-semibold text-white">
+        <nav aria-label="Secciones de ChocoPremio">
+          <h2 className="mb-3 text-base font-bold">
             Navegación
-          </h3>
+          </h2>
 
-          <ul className="space-y-2 text-sm">
-            <li>
-              <a
-                href="#Comofunciona"
-                className="text-[#f3e6c8] transition hover:text-white"
-              >
-                Cómo Funciona
-              </a>
-            </li>
-
-            <li>
-              <a
-                href="#experiencia"
-                className="text-[#f3e6c8] transition hover:text-white"
-              >
-                Experiencia
-              </a>
-            </li>
-
-            <li>
-              <a
-                href="#premios"
-                className="text-[#f3e6c8] transition hover:text-white"
-              >
-                Premios
-              </a>
-            </li>
-
-            <li>
-              <a
-                href="#sobrechocopremio"
-                className="text-[#f3e6c8] transition hover:text-white"
-              >
-                Sobre ChocoPremio
-              </a>
-            </li>
-
-            <li>
-              <a
-                href="#activatumarca"
-                className="text-[#f3e6c8] transition hover:text-white"
-              >
-                Activa Tu Marca
-              </a>
-            </li>
-
+          <ul>
+            {links.map(([href, label]) => (
+              <li key={href}>
+                <a
+                  href={href}
+                  className="inline-flex min-h-11 items-center text-sm text-[#f3e6c8] hover:text-white"
+                >
+                  {label}
+                </a>
+              </li>
+            ))}
           </ul>
-        </div>
+        </nav>
 
-        {/* DASHBOARD */}
         <div>
-          <h3 className="mb-4 text-lg font-semibold text-white">
+          <h2 className="mb-4 text-base font-bold">
             Comercios
-          </h3>
+          </h2>
 
-          <Link
+          <ButtonLink variant="custom"
             href="/dashboard/login"
-            className="
-              inline-flex
-              items-center
-              justify-center
-              rounded-xl
-              bg-white
-              px-5
-              py-2.5
-              font-bold
-              text-[#4d3800]
-              shadow-md
-              transition-all
-              duration-200
-              hover:scale-105
-              hover:bg-[#f8f1e3]
-            "
+            className="cp-touch-action rounded-xl bg-white px-5 py-3 text-sm font-bold text-[#4d3800]"
           >
-            Dashboard
-          </Link>
+            Acceso comercios
+          </ButtonLink>
         </div>
 
-        {/* CONTACTO */}
-        <div>
-          <h3 className="mb-4 text-lg font-semibold text-white">
+        <div className="min-w-0">
+          <h2 className="mb-3 text-base font-bold">
             Contacto
-          </h3>
-
-          <div className="space-y-2 text-sm text-[#f3e6c8]">
-            <p>📧 comercial@chocopremio.com</p>
-          </div>
+          </h2>
 
           <a
-            href="https://wa.me/573187649168?text=Hola%20ChocoPremio,%20quiero%20más%20información."
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 inline-block rounded-xl bg-[#25D366] px-5 py-2 font-bold text-white transition hover:scale-105"
+            href="mailto:comercial@chocopremio.com"
+            className="inline-flex min-h-11 items-center break-all text-sm text-[#f3e6c8]"
           >
-            💬 WhatsApp
+            comercial@chocopremio.com
           </a>
 
-          <p className="mt-4 text-xs text-[#d8c29a]">
-            ¿Necesitas información?
-          </p>
+          <div className="mt-3">
+            <a
+              href="https://wa.me/573187649168?text=Hola%20ChocoPremio,%20quiero%20más%20información."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="cp-touch-action rounded-xl bg-[#25D366] px-5 py-3 text-sm font-bold text-[#073b1a]"
+            >
+              WhatsApp
+            </a>
+          </div>
         </div>
       </div>
 
-      {/* FOOTER INFERIOR */}
-      <div className="border-t border-white/10 py-4 text-center text-xs text-[#d8c29a]">
+      <div
+        className="border-t border-white/15 px-5 pt-4 text-center text-xs leading-6 text-[#ead9b3]"
+        style={{
+          paddingBottom:
+            "max(1rem, env(safe-area-inset-bottom))",
+        }}
+      >
         © 2026 ChocoPremio — Design by{" "}
         <a
           href="https://elevenog.com/"
           target="_blank"
           rel="noopener noreferrer"
-          className="font-semibold text-white transition hover:text-[#f4c86a]"
+          className="font-semibold text-white"
         >
           ElevenOg Studio
         </a>

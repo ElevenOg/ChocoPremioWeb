@@ -1,28 +1,14 @@
-import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/db/supabase-server";
-import { rateLimit, getClientIp } from "@/lib/security/rateLimit";
+import { apiError, guardRequest, HttpError, json, readBody, requireSessionId } from "@/lib/server/http";
 
 export async function POST(req: Request) {
-  const ip = getClientIp(req);
-  if (!rateLimit(`session-play:${ip}`, 30, 60_000)) {
-    return NextResponse.json({ error: "Demasiadas solicitudes" }, { status: 429 });
-  }
-
-  const body = await req.json().catch(() => null);
-  const sessionId = typeof body?.sessionId === "string" ? body.sessionId : "";
-
-  if (!sessionId) {
-    return NextResponse.json({ error: "sessionId requerido" }, { status: 400 });
-  }
-
-  const { error } = await supabaseServer
-    .from("game_sessions")
-    .update({ played: true })
-    .eq("id", sessionId);
-
-  if (error) {
-    return NextResponse.json({ error: "No se pudo actualizar" }, { status: 500 });
-  }
-
-  return NextResponse.json({ ok: true });
+  try {
+    guardRequest(req, "session-play", 30);
+    const sessionId = requireSessionId((await readBody(req)).sessionId);
+    const { data, error } = await supabaseServer.from("game_sessions").update({ played: true })
+      .eq("id", sessionId).select("id").maybeSingle();
+    if (error) throw new HttpError("No se pudo registrar la participación.", 503);
+    if (!data) throw new HttpError("Sesión no encontrada.", 404);
+    return json({ ok: true });
+  } catch (error) { return apiError(error); }
 }

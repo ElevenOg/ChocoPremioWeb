@@ -1,0 +1,33 @@
+.card { width:100%; max-width:420px; padding:28px 24px; border-radius:32px; background:rgba(255,255,255,.97); border:1px solid var(--cp-border); box-shadow:var(--cp-card-shadow); color:var(--cp-brand); text-align:center; position:relative; }
+.introPending { visibility:hidden; pointer-events:none; }
+.introLoading { position:fixed; inset:0; display:grid; place-items:center; pointer-events:none; }
+.introLoading span { width:30px; height:30px; border:2px solid var(--cp-brand); border-right-color:transparent; border-radius:50%; animation:introSpin .7s linear infinite; }
+@keyframes introSpin { to { transform:rotate(360deg); } }
+.introOpening { animation:introOpen .38s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes introOpen {
+  from { opacity:0; transform:translateY(8px) scale(.97); }
+  to { opacity:1; transform:none; }
+}
+.title { margin:0 0 12px; font-size:clamp(22px,5vw,30px); line-height:1.15; font-weight:900; letter-spacing:-.6px; overflow-wrap:anywhere; }
+.accent { color:#c47a00; }
+.copy { margin:0 auto 18px; color:var(--cp-text); font-size:14px; line-height:1.65; max-width:340px; }
+.art { width:75px; margin:0 auto 6px; }
+.button { composes:cp-game-button cp-chocolate-button from global; cursor:pointer; min-height:48px; padding:15px 18px; font-size:15px; transition:transform .15s,opacity .15s; display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none; }
+.button:active:not(:disabled) { transform:scale(.98); }
+.button:disabled { cursor:default; opacity:.45; }
+.button:focus-visible,.social:focus-visible,.terms:focus-visible { outline:3px solid #c47a00; outline-offset:4px; }
+.social { width:100%; min-height:48px; border:0; border-radius:16px; padding:14px; background:linear-gradient(115deg,#8746a1,#cb516b 52%,#d99a48); color:white; display:flex; justify-content:center; align-items:center; gap:8px; font-size:14px; line-height:1.4; font-weight:800; cursor:pointer; margin-bottom:12px; box-shadow:0 5px 16px #9b536722; }
+.socialDone { background:linear-gradient(115deg,#326f54,#568c56); }
+.terms { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:48px; padding:14px; margin:0 0 12px; border:0; border-radius:16px; background:linear-gradient(115deg,#815020,#9b651d); color:white; font-size:14px; line-height:1.4; font-weight:800; cursor:pointer; box-shadow:0 5px 16px #81502022; }
+.termsDone { background:linear-gradient(115deg,#326f54,#568c56); box-shadow:0 5px 16px #326f5422; }
+.note { margin:12px 0 0; color:#8f734c; font-size:11px; line-height:1.6; }
+.error { margin:12px 0; color:#9a3824; font-size:13px; line-height:1.6; }
+.condition { padding:15px 12px; margin:20px 0; border-top:1px solid var(--cp-border); border-bottom:1px solid var(--cp-border); background:#fff6df; border-radius:10px; }
+.condition small { display:block; font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#94703f; margin-bottom:8px; }
+.condition p { margin:0; font-size:14px; line-height:1.6; font-weight:700; overflow-wrap:anywhere; }
+.ticket { text-align:center; }
+.showPrize { composes:terms; margin:0; }
+.presented { composes:showPrize termsDone; cursor:default; }
+.finish { margin-top:12px; }
+@media(max-height:620px) { .card { padding:18px; } .art { width:100px; } .title { font-size:22px; } .copy { font-size:12px; margin-bottom:12px; } .condition { margin:12px 0; padding:10px; } }
+@media(prefers-reduced-motion:reduce) { .card,.introLoading span { animation:none; } .button { transition:none; } }

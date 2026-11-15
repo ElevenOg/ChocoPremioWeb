@@ -1,30 +1,15 @@
-import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/db/supabase-server";
-import { rateLimit, getClientIp } from "@/lib/security/rateLimit";
+import { apiError, guardRequest, HttpError, json, readBody, requireSessionId } from "@/lib/server/http";
 
 export async function POST(req: Request) {
-  const ip = getClientIp(req);
-  if (!rateLimit(`session-claim:${ip}`, 15, 60_000)) {
-    return NextResponse.json({ error: "Demasiadas solicitudes" }, { status: 429 });
-  }
-
-  const body = await req.json().catch(() => null);
-  const sessionId = typeof body?.sessionId === "string" ? body.sessionId : "";
-
-  if (!sessionId) {
-    return NextResponse.json({ error: "sessionId requerido" }, { status: 400 });
-  }
-
-  const { data, error } = await supabaseServer
-    .from("game_sessions")
-    .update({ claimed_prize: true })
-    .eq("id", sessionId)
-    .select("prize_title, prize_type")
-    .single();
-
-  if (error || !data) {
-    return NextResponse.json({ error: "No se pudo reclamar" }, { status: 500 });
-  }
-
-  return NextResponse.json({ ok: true, prize: data });
+  try {
+    guardRequest(req, "session-claim", 15);
+    const sessionId = requireSessionId((await readBody(req)).sessionId);
+    const { data, error } = await supabaseServer.from("game_sessions")
+      .update({ claimed_prize: true }).eq("id", sessionId).eq("won", true)
+      .not("prize_id", "is", null).select("prize_title,prize_type").maybeSingle();
+    if (error) throw new HttpError("No se pudo solicitar el premio.", 503);
+    if (!data) throw new HttpError("Esta participación no tiene un premio para reclamar.", 409);
+    return json({ ok: true, prize: data });
+  } catch (error) { return apiError(error); }
 }

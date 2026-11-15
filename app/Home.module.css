@@ -1,0 +1,80 @@
+.root :where(a, button):focus-visible {
+  outline: 2px solid #c47a00;
+  outline-offset: 4px;
+}
+
+.root [data-home-pending="true"] {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+.hero {
+  animation: enter 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.phoneFrame {
+  width: min(340px, calc(100vw - 40px));
+  aspect-ratio: 34 / 19;
+}
+
+.videoViewport:fullscreen {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .phoneFrame {
+    width: 540px;
+    aspect-ratio: 9 / 5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero {
+    animation: none;
+  }
+
+  .root [data-home-pending="true"] {
+    opacity: 1;
+    transform: none;
+  }
+}
+.root {
+  overflow-x: clip;
+  background:
+    radial-gradient(ellipse 600px 360px at 4% 6%, #c9758e1c, transparent 70%),
+    radial-gradient(ellipse 650px 450px at 98% 30%, #6ba9951a, transparent 70%),
+    radial-gradient(ellipse 650px 400px at 2% 58%, #a08abe20, transparent 70%),
+    radial-gradient(ellipse 600px 400px at 98% 78%, #e4b65f1a, transparent 70%);
+}
+
+.iconCard[data-box-tone="rose"] { --tone:#a34667; --tone-light:#c9758e; --tone-wash:#fcf2f5; --tone-ink:#873351; }
+.iconCard[data-box-tone="jade"] { --tone:#387d6b; --tone-light:#6ba995; --tone-wash:#eef8f3; --tone-ink:#235345; }
+.iconCard[data-box-tone="amber"] { --tone:#c78c39; --tone-light:#e4b65f; --tone-wash:#fff7e8; --tone-ink:#956027; }
+.iconCard[data-box-tone="violet"] { --tone:#786195; --tone-light:#a08abe; --tone-wash:#f5f0fa; --tone-ink:#604977; }
+.iconCard { background:linear-gradient(150deg,var(--tone-wash),#fff 65%); }
+.iconBadge { background:linear-gradient(135deg,var(--tone-wash),var(--tone-light)); color:var(--tone-ink); }
+.cardAccent,.brandAccent { position:absolute; inset-inline:0; top:0; height:6px; }
+.cardAccent { background:linear-gradient(90deg,var(--tone),var(--tone-light)); }
+.brandAccent { background:linear-gradient(90deg,#a34667,#387d6b 34%,#c78c39 67%,#786195); }
+.hero > span { background:#f5f0fa; border-color:#a08abe66; color:#604977; }
+.prizesButton { background:#f5f0fa; border-color:#a08abe66; color:#604977; }
+
+@media (min-width:768px) {
+  .cardAccent,.brandAccent { inset-inline:auto; inset-block:0; left:0; width:6px; height:100%; }
+  .cardAccent { background:linear-gradient(180deg,var(--tone),var(--tone-light)); }
+  .brandAccent { background:linear-gradient(180deg,#a34667,#387d6b 34%,#c78c39 67%,#786195); }
+}
+

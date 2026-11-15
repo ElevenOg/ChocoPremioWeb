@@ -1,373 +1,112 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { useRouter, useParams } from "next/navigation";
-import Image from "next/image";
-import ChocolateLoader from "../components/ChocolateLoader";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowRight, Check, ExternalLink, ShieldCheck } from "lucide-react";
 import ChocolateBackground from "../components/ChocolateBackground";
+import IntroRetry from "./IntroRetry";
+import Image from "next/image";
+import { Button } from "../components/ui/Button";
 import useBlockBackNavigation from "../components/useBlockBackNavigation";
-import { playSound } from "../components/AudioManager";
-import { MIN_LOADING_MS, markNavStart } from "../components/loaderConfig";
-import { preloadGameAssets } from "./game/useGameLoader";
-import styles from "./Intro.module.css";
+import { playSound, preloadSounds } from "../components/AudioManager";
+import useErrorSound from "../components/useErrorSound";
+import { startGameSession } from "@/lib/client/gameApi";
+import { errorMessage, postJson, requestJson } from "@/lib/client/api";
+import { gameStorage, readStorage, writeStorage } from "@/lib/client/storage";
+import { navigateWithRecovery } from "@/lib/client/navigation";
+import type { IntroSession } from "@/lib/game/types";
+import styles from "./Experience.module.css";
 
-// El modal solo se descarga/ejecuta cuando realmente se abre.
 const TermsModal = dynamic(() => import("./TermsModal"), { ssr: false });
-
-// Precarga el chunk JS del modal en tiempo libre del navegador.
-// Sin esto, la primera vez que el usuario toca "Acepta los términos"
-// el navegador tiene que descargar+parsear ese JS justo cuando debería
-// arrancar la animación de apertura — en Android eso se siente como
-// un tranco. Precargándolo antes, al hacer click el modal ya está
-// listo y solo anima.
-let termsModalPreloaded = false;
-function preloadTermsModal() {
-  if (termsModalPreloaded) return;
-  termsModalPreloaded = true;
-  import("./TermsModal").catch(() => {
-    termsModalPreloaded = false;
-  });
-}
-
-interface Commerce {
-  id: string;
-  slug: string;
-  social_url: string | null;
-}
-
-const EMOJI_POSITIONS = [0, 1, 2, 3, 4, 5];
-
-const StepChip = memo(function StepChip({
-  number,
-  label,
-  done,
-  locked,
-  onClick
-}: {
-  number: number;
-  label: string;
-  done: boolean;
-  locked?: boolean;
-  onClick?: () => void;
-}) {
-  const chipClass = `${styles.chip} ${done ? styles.done : ""} ${locked ? styles.locked : ""}`;
-  const circleClass = `${styles.chipCircle} ${done ? styles.done : ""} ${locked ? styles.locked : ""}`;
-  const labelClass = `${styles.chipLabel} ${done ? styles.done : ""} ${locked ? styles.locked : ""}`;
-
-  return (
-    <div className={chipClass} onClick={onClick}>
-      <div className={circleClass}>{done ? "✓" : number}</div>
-      <span className={labelClass}>{label}</span>
-      {onClick && <span className={styles.chipArrow}>→</span>}
-    </div>
-  );
-});
-
-const FloatingEmojis = memo(function FloatingEmojis() {
-  return (
-    <div className={styles.floatingEmojis} aria-hidden="true">
-      {EMOJI_POSITIONS.map((i) => (
-        <span
-          key={i}
-          className={styles.floatingEmoji}
-          style={{
-            left: `${8 + i * 16}%`,
-            fontSize: i % 2 === 0 ? "20px" : "14px",
-            opacity: 0.15 + i * 0.02,
-            animationDuration: `${5 + i * 0.9}s`,
-            animationDelay: `${i * 0.8}s`
-          }}
-        >
-          🍫
-        </span>
-      ))}
-    </div>
-  );
-});
-
-interface FlowState {
-  accepted: boolean;
-  followed: boolean;
-  showModal: boolean;
-  startingGame: boolean;
-  cardVisible: boolean;
-}
-
-const INITIAL_FLOW: FlowState = {
-  accepted: false,
-  followed: false,
-  showModal: false,
-  startingGame: false,
-  cardVisible: true
-};
 
 export default function Intro() {
   useBlockBackNavigation();
-
-  const [flow, setFlow] = useState<FlowState>(INITIAL_FLOW);
-  const [loading, setLoading] = useState(true);
-  const [commerce, setCommerce] = useState<Commerce | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const navTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMobileRef = useRef<boolean | null>(null);
-
-  // Marca cuándo arrancó el loader; finishLoading() usa esto para
-  // sostener el loader un mínimo de MIN_LOADING_MS, igual que Game,
-  // Result y Claim, sin importar qué tan rápido responda la API.
-  const startedAt = useRef(Date.now());
-
+  const { slug } = useParams<{ slug: string }>();
   const router = useRouter();
-  const params = useParams<{ slug: string }>();
+  const [session, setSession] = useState<IntroSession | null>(null);
+  const [accepted, setAccepted] = useState(false);
+  const [followed, setFollowed] = useState(false);
+  const [modal, setModal] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const submitRef = useRef(false);
+  const cancelNavigation = useRef<(() => void) | null>(null);
+  const ready = session !== null;
+  useErrorSound(error);
 
-  const patchFlow = useCallback((patch: Partial<FlowState>) => {
-    setFlow((prev) => ({ ...prev, ...patch }));
-  }, []);
-
-  // Reemplaza a setLoading(false): siempre espera el piso de tiempo
-  // antes de apagar el loader, para que la duración se sienta igual
-  // en todas las pantallas.
-  const finishLoading = useCallback(() => {
-    const elapsed = Date.now() - startedAt.current;
-    const remaining = Math.max(MIN_LOADING_MS - elapsed, 0);
-    setTimeout(() => setLoading(false), remaining);
-  }, []);
+  useEffect(() => () => cancelNavigation.current?.(), []);
 
   useEffect(() => {
-    if (!params?.slug) return;
     let active = true;
+    // Load the box screen code while the visitor completes the intro steps.
+    void import("./game/Game").catch(() => undefined);
+    startGameSession(slug, readStorage(gameStorage.session(slug))).then((data) => {
+      if (!active) return;
+      if (typeof data?.session_id !== "string" || !data.session_id) throw new Error("No se pudo preparar el juego. Intenta de nuevo.");
+      let social: string | null = null;
+      try { if (data.social_url && new URL(data.social_url).protocol === "https:") social = data.social_url; } catch { /* No se abren enlaces inválidos. */ }
+      setSession({ ...data, social_url: social });
+      router.prefetch("/" + slug + (data.has_result ? "/result" : "/game") + "?session=" + encodeURIComponent(data.session_id));
+      writeStorage(gameStorage.session(slug), data.session_id);
+      setAccepted(readStorage(gameStorage.accepted(slug)) === "true");
+      setFollowed(!social || readStorage(gameStorage.social(slug)) === "true");
+      setError("");
+    }).catch((cause) => { if (active) setError(errorMessage(cause)); });
+    router.prefetch("/" + slug + "/game");
+    return () => { active = false; };
+  }, [slug, router, attempt]);
 
-    // Precarga el chunk JS de /game...
-    router.prefetch(`/${params.slug}/game`);
-    // ...y también sus imágenes/sonidos/fuentes, usando la MISMA
-    // bandera (assetsWarmed) que consume useGameLoader. Cuando el
-    // usuario llegue a Game, este ya sabrá que no hay nada que
-    // esperar y arrancará con loading=false de inmediato.
-    preloadGameAssets();
+  const follow = () => {
+    if (!session?.social_url) return;
+    preloadSounds(); playSound("click");
+    setFollowed(true);
+    writeStorage(gameStorage.social(slug), "true");
+    void requestJson("/api/session/social", { method: "POST", body: JSON.stringify({ sessionId: session.session_id }), keepalive: true }).catch(() => undefined);
+    window.open(session.social_url, "_blank", "noopener,noreferrer");
+  };
+  const start = async () => {
+    if (!session || submitRef.current || (!session.has_result && (!accepted || !followed))) return;
+    submitRef.current = true; setBusy(true); setError("");
+    preloadSounds(); playSound("click");
+    try {
+      if (!session.has_result) await postJson("/api/session/play", { sessionId: session.session_id });
+      const href = "/" + slug + (session.has_result ? "/result" : "/game") + "?session=" + encodeURIComponent(session.session_id);
+      cancelNavigation.current = navigateWithRecovery(href, (url) => router.push(url));
+    } catch (cause) { submitRef.current = false; setBusy(false); setError(errorMessage(cause)); }
+  };
+  if (error && !session) return <ChocolateBackground><IntroRetry onRetry={() => { setError(""); setAttempt((value) => value + 1); }} /></ChocolateBackground>;
 
-    // Precarga el chunk del modal de términos en tiempo libre,
-    // para que abrirlo no dispare descarga+parseo de JS al mismo
-    // tiempo que la animación (la causa del tranco en Android).
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      (window as any).requestIdleCallback(preloadTermsModal, { timeout: 1500 });
-    } else {
-      setTimeout(preloadTermsModal, 300);
-    }
-
-    const followedSession = sessionStorage.getItem("followed") === "true";
-    const acceptedSession = sessionStorage.getItem("accepted") === "true";
-    if (followedSession || acceptedSession) {
-      patchFlow({ followed: followedSession, accepted: acceptedSession });
-    }
-
-    // Toda la creación/recuperación de sesión de juego ahora vive
-    // en el servidor (/api/session/start), usando el service_role
-    // de Supabase. El navegador nunca vuelve a tocar la tabla
-    // commerces ni game_sessions directamente.
-    const loadCommerce = async () => {
-      try {
-        const existingSessionId = sessionStorage.getItem("intro_session_id");
-        
-        const res = await fetch("/api/session/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-           slug: params.slug,
-           existingSessionId,
-         }),
-
-        });
-
-        if (!active) return;
-
-        if (!res.ok) {
-          console.error("SESSION START ERROR", await res.text());
-          setCommerce(null);
-          finishLoading();
-          return;
-        }
-
-        const data = await res.json();
-
-        setCommerce({
-          id: data.commerce_id,
-          slug: data.slug,
-          social_url: data.social_url
-        });
-        setSessionId(data.session_id);
-        sessionStorage.setItem("intro_session_id", data.session_id);
-        finishLoading();
-      } catch (err) {
-        if (!active) return;
-        console.error("SESSION START ERROR", err);
-        setCommerce(null);
-        finishLoading();
-      }
-    };
-
-    loadCommerce();
-
-    return () => {
-      active = false;
-    };
-  }, [params.slug, router, patchFlow, finishLoading]);
-
-  useEffect(() => {
-    return () => {
-      if (navTimeout.current) clearTimeout(navTimeout.current);
-    };
-  }, []);
-
-  const playClick = useCallback(() => {
-    playSound("click");
-  }, []);
-
-  const handleFollow = useCallback(() => {
-    if (!commerce?.social_url) return;
-
-    playClick();
-
-    if (isMobileRef.current === null) {
-      isMobileRef.current = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    }
-
-    if (isMobileRef.current) {
-      window.location.href = commerce.social_url;
-    } else {
-      window.open(commerce.social_url, "_blank");
-    }
-
-    patchFlow({ followed: true });
-    sessionStorage.setItem("followed", "true");
-
-    if (sessionId) {
-      fetch("/api/session/social", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      }).catch((err) => console.error("SOCIAL ERROR", err));
-    }
-    
-  }, [playClick, commerce, sessionId, patchFlow]);
-
-  const handleStartGame = useCallback(() => {
-    playClick();
-    patchFlow({ startingGame: true, cardVisible: false });
-
-    if (sessionId) {
-      fetch("/api/session/play", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      }).catch((err) => console.error("PLAY ERROR", err));
-    }
-
-    navTimeout.current = setTimeout(() => {
-      // Marca el instante de navegación: el loader de Game contará
-      // su mínimo desde AQUÍ, no desde que Game termine de montar.
-      // (En la práctica, si preloadGameAssets ya terminó, Game ni
-      // siquiera va a mostrar loader, así que esto es solo un
-      // resguardo por si el usuario hace click MUY rápido).
-      markNavStart();
-      router.push(`/${params.slug}/game?session=${sessionId}`);
-    }, 400);
-  }, [playClick, sessionId, router, params.slug, patchFlow]);
-
-  const handleOpenTermsModal = useCallback(() => {
-    playClick();
-    // Por si el idle callback aún no corrió (click muy rápido):
-    // dispara la precarga igual, sin esperar más tiempo libre.
-    preloadTermsModal();
-    patchFlow({ showModal: true });
-  }, [playClick, patchFlow]);
-
-  const handleAcceptTerms = useCallback(() => {
-    playClick();
-    sessionStorage.setItem("accepted", "true");
-    patchFlow({ accepted: true, showModal: false });
-  }, [playClick, patchFlow]);
-
-  const handleCloseModal = useCallback(() => patchFlow({ showModal: false }), [patchFlow]);
-
-  const { accepted, followed, showModal, startingGame, cardVisible } = flow;
-  const canPlay = accepted && followed && !startingGame;
-
-  const warningText = useMemo(() => {
-    if (!accepted && !followed) return "Completa los pasos 1 y 2 para jugar";
-    if (!accepted) return "Acepta los términos primero";
-    if (!followed) return "Síguenos en Instagram primero";
-    return "Presiona JUGAR AHORA para comenzar.";
-  }, [accepted, followed]);
-
-  if (loading) return <ChocolateLoader isVisible={true} />;
-
-  if (!commerce) {
-    return (
-      <ChocolateBackground>
-        <h1 className={styles.title}>NO DISPONIBLE</h1>
-      </ChocolateBackground>
-    );
-  }
-
-  return (
-    <ChocolateBackground>
-      <FloatingEmojis />
-
-      {cardVisible && (
-        <div className={`${styles.card} ${!cardVisible ? styles.cardExit : ""}`}>
-          <div className={styles.logoWrapper}>
-            <div className={styles.halo} aria-hidden="true" />
-            <div className={`${styles.logoImageBox} ${styles.chocoFloat}`}>
-              <Image
-                src="/images/choco.webp"
-                alt="Chocolate"
-                width={95}
-                height={95}
-                unoptimized
-                priority
-              />
-            </div>
-          </div>
-
-          <h1 className={styles.title}>
-            ¡ROMPE Y GANA
-            <br />
-            <span className={styles.titleAccent}>TU PREMIO!</span>
-          </h1>
-
-          <p className={styles.subtitle}>Rompe el chocolate y descubre tu sorpresa</p>
-
-          <div className={styles.divider} />
-
-          <div className={styles.steps}>
-            <StepChip number={1} label="Acepta los términos" done={accepted} onClick={handleOpenTermsModal} />
-            <StepChip number={2} label="Síguenos en redes" done={followed} onClick={handleFollow} />
-          </div>
-
-          <div className={styles.buttonWrap}>
-            <button
-              disabled={!canPlay}
-              onClick={handleStartGame}
-              className={`${styles.button} ${canPlay ? styles.canPlay : ""}`}
-            >
-              {canPlay && <span className={styles.shimmer} aria-hidden="true" />}
-              <span className={styles.buttonLabel}>
-                {startingGame ? "CARGANDO" : " JUGAR AHORA"}
-              </span>
-            </button>
-          </div>
-
-          <p className={styles.warning}>
-            {warningText ?? "Presiona «JUGAR AHORA» para comenzar."}
-          </p>
-        </div>
-      )}
-
-      {showModal && (
-        <TermsModal onAccept={handleAcceptTerms} onClose={handleCloseModal} />
-      )}
-    </ChocolateBackground>
-  );
+  return <ChocolateBackground>
+    {!ready && <div className={styles.introLoading} role="status" aria-label="Preparando el juego"><span aria-hidden="true" /></div>}
+    <section className={`${styles.card} ${ready ? styles.introOpening : styles.introPending}`} aria-busy={!ready || busy} inert={!ready}>
+    <div className={styles.art}>
+      <Image
+        src="/images/logoCP.webp"
+        width={468}
+        height={644}
+        alt="ChocoPremio"
+        loading="eager"
+        fetchPriority="high"
+        unoptimized
+        draggable={false}
+        className="h-auto w-full"
+      />
+    </div>
+    <h1 className={styles.title}>CUATRO CAJAS.<br /><span className={styles.accent}>UN REGALO PARA TI.</span></h1>
+    <p className={styles.copy}>Sigue tu intuición. Elige una caja y descubre tu sorpresa.</p>
+    <button type="button" className={`${styles.terms} ${accepted ? styles.termsDone : ""}`} onClick={() => { playSound("click"); setModal(true); }}>
+      {accepted ? <Check size={17} /> : <ShieldCheck size={17} />} {accepted ? "Términos aceptados" : "Acepta los términos"}
+    </button>
+    {session?.social_url && <button type="button" onClick={follow} className={`${styles.social} ${followed ? styles.socialDone : ""}`}>
+      {followed ? <Check size={17} /> : <ExternalLink size={17} />} {followed ? "Volver a nuestra red social" : "Visita nuestra red social"}
+    </button>}
+    <Button className={styles.button} onClick={start} loading={busy} loadingLabel="Preparando tu juego" disabled={!session || busy || (!session.has_result && (!accepted || !followed))}>
+      {session?.has_result ? "VER MI PREMIO" : "ELEGIR MI CAJA"}<ArrowRight size={17} />
+    </Button>
+    {error && <p className={styles.error} role="alert">{error}</p>}
+    <p className={styles.note}>{session?.has_result ? "Tu elección ya está guardada." : "Completa los pasos y vuelve aquí para elegir una sola caja."}</p>
+    {modal && <TermsModal onClose={() => { playSound("click"); setModal(false); }} onAccept={() => { setAccepted(true); writeStorage(gameStorage.accepted(slug), "true"); setModal(false); playSound("confirm"); }} />}
+  </section></ChocolateBackground>;
 }

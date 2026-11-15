@@ -2,26 +2,72 @@
 
 :root {
   --foreground: #171717;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: ui-monospace, monospace;
+
+  --cp-brand: #4d3800;
+  --cp-text: #6b4f2a;
+  --cp-border: #ead9b3;
+  --cp-font: Arial, Helvetica, sans-serif;
+  --cp-background-linear: linear-gradient(to bottom in oklab, #fff, #fff6e4, #f6ddb1);
+  --cp-background-game: radial-gradient(circle at top, #fffdf6 0%, #fff6e4 35%, #fdeccf 60%, #f6ddb1 100%);
+  --cp-card-shadow: 0 20px 48px rgb(77 56 0 / 18%), 0 6px 16px rgb(0 0 0 / 7%);
 }
 
 html,
 body {
   background: transparent;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-
-  /* Control de interacción */
+  font-family: var(--cp-font);
   touch-action: manipulation;
   -webkit-user-select: none;
   user-select: none;
-
-  /* Evita que iOS ajuste el tamaño de texto al rotar */
   -webkit-text-size-adjust: 100%;
 }
 
-/* Se activa solo en las pantallas del juego */
-.noOverscroll {
-  overscroll-behavior: none;
+.cp-background-linear { background: var(--cp-background-linear); }
+.cp-background-dashboard { background:var(--cp-background-linear); background-attachment:fixed; }
+.cp-page-enter { animation:cp-reveal .3s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes cp-reveal { from { opacity:0; transform:translateY(8px) scale(.99); } to { opacity:1; transform:none; } }
+@media(prefers-reduced-motion:reduce) { .cp-page-enter { animation:none; } }
+
+.cp-touch-action {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 150ms ease, background-color 150ms ease;
+}
+
+.cp-touch-action:active { transform: scale(0.98); }
+
+@media (hover: hover) and (pointer: fine) {
+  .cp-touch-action:hover { transform: translateY(-2px); }
+}
+
+.cp-game-button {
+  width: 100%;
+  padding: var(--game-button-padding, 17px);
+  border-radius: 50px;
+  border: none;
+  color: #fff;
+  font-size: var(--game-button-font-size, clamp(16px, 4vw, 18px));
+  font-weight: var(--game-button-weight, 900);
+  letter-spacing: var(--game-button-spacing, 1px);
+}
+
+.cp-chocolate-button {
+  background: linear-gradient(135deg, var(--cp-brand), #7a5c00);
+  box-shadow: 0 6px 16px rgb(77 56 0 / 30%);
+  position: relative;
+  overflow: hidden;
+  contain: layout paint;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-touch-action { transition: none; }
+  .cp-touch-action:hover, .cp-touch-action:active { transform: none; }
 }

@@ -2,28 +2,10 @@
 
 import { useEffect } from "react";
 
-/**
- * BLOQUEA:
- * - Zoom con dos dedos (pinch) en iPhone y Android
- * - Gestos nativos Safari (gesturestart/change/end)
- *
- * NO BLOQUEA:
- * - Tap normal (para reproducir video, tocar botones, etc.)
- * - Doble toque (ya no se bloquea, para no interferir con taps)
- * - Botón atrás
- * - Recarga (F5 / Ctrl+R)
- * - Scroll normal
- *
- * Úsalo en páginas donde solo quieres evitar el pinch zoom
- * (Intro, Login, Dashboard), sin tocar la navegación ni el tap.
- */
 export default function useBlockZoom() {
 
   useEffect(() => {
 
-    /**
-     * Bloquea pinch zoom (2+ dedos)
-     */
     function handleTouchStart(
       e: TouchEvent
     ) {
@@ -34,10 +16,6 @@ export default function useBlockZoom() {
       }
     }
 
-    /**
-     * Bloquea pinch zoom
-     * mientras se mueven los dedos
-     */
     function handleTouchMove(
       e: TouchEvent
     ) {
@@ -48,10 +26,6 @@ export default function useBlockZoom() {
       }
     }
 
-    /**
-     * Bloquea gestos nativos
-     * Safari (pinch/rotate)
-     */
     function preventGesture(
       e: Event
     ) {
@@ -86,9 +60,6 @@ export default function useBlockZoom() {
       preventGesture as EventListener
     );
 
-    /**
-     * Limpieza
-     */
     return () => {
 
       document.removeEventListener(

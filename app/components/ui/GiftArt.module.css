@@ -1,0 +1,11 @@
+.gift { display:block; width:100%; height:auto; overflow:visible; pointer-events:none; }
+.rose { --box-light:#c9758e; --box-mid:#a34667; --box-dark:#702c47; --box-side:#873351; }
+.jade { --box-light:#6ba995; --box-mid:#387d6b; --box-dark:#235345; --box-side:#2c6453; }
+.amber { --box-light:#e4b65f; --box-mid:#c78c39; --box-dark:#956027; --box-side:#a16a29; }
+.violet { --box-light:#a08abe; --box-mid:#786195; --box-dark:#4b3a66; --box-side:#604977; }
+.ground { fill:#3e241c; opacity:.13; }
+.lid { transform-box:view-box; transform-origin:112px 76px; }
+.open .lid { animation:open-lid 1.1s cubic-bezier(.2,.7,.2,1) forwards; }
+.revealed .lid { animation:none; transform:translate(-46px,-34px) rotate(-24deg); }
+@keyframes open-lid { to { transform:translate(-10px,-67px) rotate(-17deg); opacity:.12; } }
+@media(prefers-reduced-motion:reduce) { .open .lid { animation:none; transform:translate(-10px,-45px) rotate(-12deg); opacity:.15; } }

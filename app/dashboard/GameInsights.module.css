@@ -1,0 +1,24 @@
+.card { padding:20px; border:1px solid #4d380010; border-radius:24px; background:#ffffffed; box-shadow:0 6px 24px #4d38000b; color:var(--cp-brand); }
+.heading { display:flex; align-items:center; gap:10px; margin-bottom:6px; font-size:18px; line-height:1.3; font-weight:800; }
+.copy { color:#70502f; font-size:12px; line-height:1.7; margin:0; }
+.boxes { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:18px 0 12px; }
+.box { min-width:0; padding:12px 6px; border:1px solid #ead9b3; border-radius:18px; text-align:center; background:#fffcf6; }
+.favorite { border-color:#b78d3e; background:#fff5dd; }
+.art { width:88px; max-width:100%; margin:0 auto; }
+.name { font-size:13px; font-weight:800; margin:4px 0 7px; }
+.count { display:block; font-size:22px; font-weight:800; line-height:1.2; font-variant-numeric:tabular-nums; }
+.percent { display:block; color:#70502f; font-size:11px; margin-top:4px; }
+.badge { display:inline-block; min-height:18px; margin-top:8px; font-size:10px; font-weight:800; color:#815020; }
+.empty { padding:24px 0 12px; text-align:center; color:#70502f; font-size:13px; line-height:1.7; }
+.summary { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; margin:18px 0 12px; }
+.summary strong { font-size:28px; font-weight:800; font-variant-numeric:tabular-nums; }
+.summary span { font-size:12px; color:#70502f; }
+.days { display:grid; grid-template-columns:repeat(14,minmax(0,1fr)); gap:4px; list-style:none; margin:0; padding:0; }
+.day { position:relative; min-width:0; text-align:center; }
+.accessible { position:absolute; left:0; top:0; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.plot { height:140px; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; border-bottom:1px solid #ead9b3; }
+.value { font-size:9px; color:#70502f; margin-bottom:5px; font-variant-numeric:tabular-nums; }
+.bar { display:block; width:100%; max-width:26px; border-radius:5px 5px 0 0; background:linear-gradient(0deg,#6b4f1a,#d9a441); }
+.date { display:block; font-size:10px; color:#70502f; margin-top:7px; }
+.range { display:flex; justify-content:space-between; gap:8px; font-size:11px; color:#70502f; margin-top:12px; }
+@media(min-width:540px) { .boxes { grid-template-columns:repeat(4,minmax(0,1fr)); } .card { padding:24px; } .days { gap:10px; } }
