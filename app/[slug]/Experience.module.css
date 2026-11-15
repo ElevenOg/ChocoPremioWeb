@@ -27,7 +27,8 @@
 .condition p { margin:0; font-size:14px; line-height:1.6; font-weight:700; overflow-wrap:anywhere; }
 .ticket { text-align:center; }
 .showPrize { composes:terms; margin:0; }
-.presented { composes:showPrize termsDone; cursor:default; }
+.presented { margin:0; border-radius:16px; cursor:default; }
+.presented svg { flex-shrink:0; }
 .finish { margin-top:12px; }
 @media(max-height:620px) { .card { padding:18px; } .art { width:100px; } .title { font-size:22px; } .copy { font-size:12px; margin-bottom:12px; } .condition { margin:12px 0; padding:10px; } }
 @media(prefers-reduced-motion:reduce) { .card,.introLoading span { animation:none; } .button { transition:none; } }

@@ -5,7 +5,7 @@ import { test } from "node:test";
 import ts from "typescript";
 
 function setup({ state = "running", active = true, unsupported = false, delayedResume = false } = {}) {
-  const oscillators = [], contexts = [], gains = [], events = new Map();
+  const oscillators = [], contexts = [], gains = [], samples = [], events = new Map();
   const listeners = new Map(), windowListeners = new Map(), windowEvents = new Map(), timers = new Map();
   let nextTimer = 0;
   const add = (map, dispatch, name, callback) => { if (!map.has(name)) map.set(name, new Set()); map.get(name).add(callback); dispatch.set(name, () => [...map.get(name)].forEach(fn => fn())); };
@@ -16,6 +16,8 @@ function setup({ state = "running", active = true, unsupported = false, delayedR
   class AudioContext {
     constructor(options) { this.options = options; this.state = state; this.currentTime = 10; this.destination = {}; contexts.push(this); }
     createGain() { const gain = { gain: parameter(), connect() {}, disconnect() { gain.disconnected = true; } }; gains.push(gain); return gain; }
+    createBuffer(channels, frames, rate) { return { channels, frames, rate }; }
+    createBufferSource() { const sample = { connect() {}, disconnect() {}, start() {} }; samples.push(sample); return sample; }
     createOscillator() {
       const oscillator = { frequency: parameter(), connect() {}, disconnect() { oscillator.disconnected = true; }, start(time) { oscillator.startedAt = time; }, stop(time) { oscillator.stoppedAt = time ?? this.currentTime; } };
       oscillators.push(oscillator); return oscillator;
@@ -30,8 +32,9 @@ function setup({ state = "running", active = true, unsupported = false, delayedR
     addEventListener: (name, callback) => add(windowListeners, windowEvents, name, callback),
     removeEventListener: (name, callback) => remove(windowListeners, name, callback),
   };
-  vm.runInNewContext(code, { exports, window: { ...host, ...(unsupported ? {} : { AudioContext }) }, document, navigator: { userActivation: { isActive: active } }, performance: { now: () => clock } });
-  return { ...exports, contexts, oscillators, gains, document, events, windowEvents, timers };
+  const navigator = { userActivation: { isActive: active }, audioSession: { type: "auto" } };
+  vm.runInNewContext(code, { exports, window: { ...host, ...(unsupported ? {} : { AudioContext }) }, document, navigator, performance: { now: () => clock } });
+  return { ...exports, contexts, oscillators, gains, samples, navigator, document, events, windowEvents, timers };
 }
 
 test("all seven cues use the audio clock immediately and share one interactive context", () => {
@@ -120,4 +123,22 @@ test("blocked melody waits for interaction and cannot start after leaving game",
   audio.windowEvents.get("pointerdown")();stop();await Promise.resolve();
   assert.equal(audio.oscillators.length, 0);
   assert.equal(audio.timers.size, 0);
+});
+
+test("Safari touch unlocks playback once and resumes an interrupted context", () => {
+  const audio = setup({ state: "suspended", active: false });
+  const cleanup = audio.initializeGameAudio();
+  assert.equal(audio.contexts.length, 0);
+  audio.events.get("touchend")();
+  assert.equal(audio.navigator.audioSession.type, "playback");
+  assert.equal(audio.contexts[0].state, "running");
+  assert.equal(audio.samples.length, 1);
+  assert.equal(audio.samples[0].buffer.frames, 1);
+  audio.contexts[0].state = "interrupted";
+  audio.events.get("touchend")();
+  assert.equal(audio.contexts[0].state, "running");
+  assert.equal(audio.samples.length, 1);
+  cleanup();
+  audio.events.get("touchend")();
+  assert.equal(audio.contexts[0].resumes, 2);
 });

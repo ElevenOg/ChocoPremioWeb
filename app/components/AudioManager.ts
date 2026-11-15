@@ -14,10 +14,15 @@ const sounds: Record<SoundName, Note[]> = {
 
 let context: AudioContext | null = null;
 let output: GainNode | null = null;
+let primedContext: AudioContext | null = null;
 const voices = new Set<() => void>();
 
 function getContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
+  try {
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (session && session.type !== "playback") session.type = "playback";
+  } catch { /* Optional on browsers without Audio Session support. */ }
   if (context && context.state !== "closed") return context;
   const Audio = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Audio) return null;
@@ -122,7 +127,31 @@ export function preloadSounds() {
   try {
     const audio = getContext();
     if (audio && audio.state !== "running") void audio.resume().catch(() => undefined);
+    // Prime Safari's output inside the actual touch, using a generated silent
+    // sample. This needs no file and is never used as background audio.
+    if (audio && primedContext !== audio) {
+      const sample = audio.createBufferSource();
+      sample.buffer = audio.createBuffer(1, 1, 22050);
+      sample.connect(audio.destination);
+      sample.onended = () => sample.disconnect();
+      sample.start(0);
+      primedContext = audio;
+    }
   } catch { /* Audio is optional; interaction must always continue. */ }
+}
+
+export function initializeGameAudio(): () => void {
+  if (typeof document === "undefined") return () => {};
+  // Capture real gestures before React handlers, including Safari touch events.
+  const options = { capture: true, passive: true };
+  document.addEventListener("pointerdown", preloadSounds, options);
+  document.addEventListener("touchend", preloadSounds, options);
+  document.addEventListener("keydown", preloadSounds, options);
+  return () => {
+    document.removeEventListener("pointerdown", preloadSounds, true);
+    document.removeEventListener("touchend", preloadSounds, true);
+    document.removeEventListener("keydown", preloadSounds, true);
+  };
 }
 
 export function playSound(name: SoundName): boolean {

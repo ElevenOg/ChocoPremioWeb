@@ -24,7 +24,7 @@ export default function Claim() {
       <h1 className={styles.title}>{result.prize.name || result.prize.title}</h1>
       <p className={styles.copy}>Muestra esta pantalla al personal del comercio para validar tu beneficio.</p>
       {result.prize.redemption_condition && <div className={styles.condition}><small>Condiciones de tu regalo</small><p>{result.prize.redemption_condition}</p></div>}
-      {shown ? <p className={styles.presented} role="status"><CheckCircle2 size={18} /> Marcado como mostrado en caja</p> : <Button className={styles.showPrize} onClick={markShown}><Store size={18} /> MOSTRAR EN CAJA</Button>}
+      {shown ? <p className={`${styles.terms} ${styles.termsDone} ${styles.presented}`} role="status"><CheckCircle2 size={18} /><span>Marcado como mostrado en caja</span></p> : <Button className={styles.showPrize} onClick={markShown}><Store size={18} /> MOSTRAR EN CAJA</Button>}
       <Button className={`${styles.button} ${styles.finish}`} disabled={!shown} onClick={() => { playSound("click"); setConfirm(true); }}>FINALIZAR</Button>
       <p className={styles.note}>La entrega del premio debe confirmarla el personal del comercio.</p>
     </>
