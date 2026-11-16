@@ -18,7 +18,7 @@ export default function Claim() {
   const cancel = useCallback(() => { if (!finishing) { playSound("click"); setConfirm(false); } }, [setConfirm, finishing]);
   if (error) return <ChocolateBackground><AsyncMessage message={error} onRetry={retry} href={introHref} /></ChocolateBackground>;
   if (loading || !result) return <ChocolateBackground><FeedbackDialog title="Recuperando tu premio" description="Estamos preparando los datos de tu participación." loading standalone /></ChocolateBackground>;
-  return <ChocolateBackground><section className={`${styles.card} ${styles.ticket} ${!loading ? "cp-page-enter" : ""}`} aria-busy={loading}>
+  return <ChocolateBackground><section className={`${styles.card} ${styles.ticket} ${styles.introEnter}`} aria-busy={loading}>
     <>
       <div className={styles.art}><GiftArt color={BOXES[(result.selected_box ?? 0) - 1]?.color ?? prizeColor(result.prize.type)} chocolate={result.prize.type === "big_discount"} discount={["small_discount", "medium_discount", "large_discount"].includes(result.prize.type)} /></div>
       <h1 className={styles.title}>{result.prize.name || result.prize.title}</h1>

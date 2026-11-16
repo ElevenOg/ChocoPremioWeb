@@ -38,6 +38,9 @@ try {
   assert.ok(html.includes("CUATRO CAJAS."));
   assert.ok(html.includes("/" + slug + "/social"), "Social link is in the initial HTML");
   assert.ok(!html.includes("introPending") && !html.includes("Preparando el juego"));
+  const socialRedirect = await fetch(base + "/" + slug + "/social", { redirect: "manual" });
+  assert.equal(socialRedirect.status, 307);
+  assert.equal(socialRedirect.headers.get("location"), "https://www.instagram.com/example/");
   console.log("Initial HTML contains the complete intro.");
 
   const profile = await mkdtemp(join(tmpdir(), "chocopremio-intro-"));
@@ -125,6 +128,10 @@ try {
   assert.ok(pausedStart, "Session is deliberately held pending");
   assert.equal(await evaluate("getComputedStyle(document.querySelector('section')).visibility"), "visible");
   assert.equal(await evaluate("!!document.querySelector('section[inert]')"), false);
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('section')).animationDuration"), "0.28s");
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }, page);
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('section')).animationName"), "none");
+  await send("Emulation.setEmulatedMedia", { features: [] }, page);
   console.log("Intro stays interactive while the session is pending.");
   await click("Acepta los");
   await until("!!document.querySelector('[role=dialog]')");
@@ -150,8 +157,10 @@ try {
   await send("Page.bringToFront", {}, socialPage);
   for (let i = 0; i < 80 && !blockedExternal; i++) await sleep(50);
   assert.ok(blockedExternal, "Social tab attempts external navigation, intercepted for safety");
-  assert.ok(await evaluate("document.body.textContent.includes('TU JUEGO')", socialPage), "Return screen survives an app handoff/aborted navigation");
-  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('VOLVER A MI JUEGO')).click()", socialPage).catch(() => {});
+  const socialTabs = await send("Target.getTargets");
+  const socialTarget = socialTabs.targetInfos.find((item) => item.type === "page" && item.targetId !== target.targetId);
+  assert.ok(socialTarget);
+  await send("Target.closeTarget", { targetId: socialTarget.targetId });
   assert.equal(await evaluate("location.pathname"), "/" + slug + "/claim", "Closing the social tab preserves the original game");
 
   await evaluate("sessionStorage.clear()");
@@ -163,6 +172,7 @@ try {
   startMode = "ready";
   await click("VOLVER A INTENTAR");
   await until("!document.body.textContent.includes('VOLVER A INTENTAR')");
+  await until("document.querySelector('a[target=_blank]')?.href === 'https://www.instagram.com/example/'");
   assert.ok(await evaluate("document.body.textContent.includes('Términos aceptados')"), "Retry preserves accepted terms");
   for (const [width, height] of [[390, 844], [768, 1024], [1440, 900]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 600 }, page);
@@ -185,7 +195,7 @@ try {
   await click("ELEGIR MI CAJA");
   await until("!!document.querySelector('button[aria-label^=\"Abrir caja\"]:not(:disabled)')");
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ initialHtmlComplete: true, delayedSessionInteractive: true, earlyStartUsesOneSession: true, socialVisitQueued: true, socialReturnScreen: true, originalGamePreserved: true, fullGameResultClaim: true, retryPreservesTerms: true, existingResultResumed: true, commerceWithoutSocialWorks: true, responsiveWidths: [390, 768, 1440], runtimeErrors: 0 }));
+  console.log(JSON.stringify({ initialHtmlComplete: true, lightweightIntroAnimation: true, reducedMotionSupported: true, delayedSessionInteractive: true, earlyStartUsesOneSession: true, socialVisitQueued: true, socialOpensDirectly: true, originalGamePreserved: true, fullGameResultClaim: true, retryPreservesTerms: true, existingResultResumed: true, commerceWithoutSocialWorks: true, responsiveWidths: [390, 768, 1440], runtimeErrors: 0 }));
   await send("Browser.close").catch(() => {});
 } finally {
   for (const call of pending.values()) clearTimeout(call.timer);

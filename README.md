@@ -45,7 +45,7 @@ npm run build
 npm run start
 ```
 
-El intro muestra su contenido antes de crear la sesión. La ruta `/<slug>/social` abre la red en otra pestaña con una pantalla de regreso, conservando la pestaña del juego. La configuración pública de ese enlace se consulta por separado y se almacena en caché durante 60 segundos.
+El intro muestra su contenido con una animación CSS de 280 ms mientras crea la sesión. La red social se abre directamente en otra pestaña, conservando el intro. Para visitas anteriores a la creación de sesión, `/<slug>/social` resuelve el enlace mediante una redirección, sin pantalla intermedia. Su configuración pública se almacena en caché durante 60 segundos.
 
 Después de compilar, `node tests/intro-flow.browser.mjs` comprueba sesiones lentas, términos, visita social, reintentos y el flujo hasta claim. Usa datos y respuestas de prueba, sin modificar Supabase. En Windows utiliza Edge; `QA_BROWSER_PATH` permite indicar otro ejecutable compatible con Chromium.
 

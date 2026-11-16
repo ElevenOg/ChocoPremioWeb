@@ -97,7 +97,7 @@ export default function Intro({ slug }: { slug: string }) {
   };
 
   return <ChocolateBackground>
-    <section className={styles.card}>
+    <section className={`${styles.card} ${styles.introEnter}`}>
     <div className={styles.art}>
       <Image
         src="/images/logoCP.webp"
@@ -116,7 +116,7 @@ export default function Intro({ slug }: { slug: string }) {
     <button type="button" className={`${styles.terms} ${accepted ? styles.termsDone : ""}`} onClick={() => { playSound("click"); setModal(true); }}>
       {accepted ? <Check size={17} /> : <ShieldCheck size={17} />} {accepted ? "Términos aceptados" : "Acepta los términos"}
     </button>
-    {social && <a href={"/" + encodeURIComponent(slug) + "/social"} target="_blank" rel="noopener noreferrer" aria-describedby="social-return-hint" onClick={follow} className={`${styles.social} ${followed ? styles.socialDone : ""}`}>
+    {social && <a href={session?.social_url ?? "/" + encodeURIComponent(slug) + "/social"} target="_blank" rel="noopener noreferrer" aria-describedby="social-return-hint" onClick={follow} className={`${styles.social} ${followed ? styles.socialDone : ""}`}>
       {followed ? <Check size={17} /> : <ExternalLink size={17} />} {followed ? "Volver a nuestra red social" : "Visita nuestra red social"}
     </a>}
     {social && <p id="social-return-hint" className={styles.socialHint}>La red social se abre en otra pestaña. Tu juego sigue aquí.</p>}

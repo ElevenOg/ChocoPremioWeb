@@ -19,7 +19,7 @@ export default function Result() {
   const { result, loading, error, retry, claim, submitting, actionError, introHref, finish } = useResult();
   if (error) return <ChocolateBackground><AsyncMessage message={error} onRetry={retry} href={introHref} /></ChocolateBackground>;
   if (loading || !result) return <ChocolateBackground><FeedbackDialog title="Recuperando tu sorpresa" description="Estamos preparando los datos de tu participación." loading standalone /></ChocolateBackground>;
-  return <ChocolateBackground><section className={`${styles.card} ${celebration.card} ${result.won ? celebration.winner : ""} cp-page-enter`} aria-busy={loading}>
+  return <ChocolateBackground><section className={`${styles.card} ${styles.introEnter} ${celebration.card} ${result.won ? celebration.winner : ""}`} aria-busy={loading}>
     <div className={celebration.shine} aria-hidden="true" />
     <>
       <div className={`${styles.art} ${celebration.gift}`}>

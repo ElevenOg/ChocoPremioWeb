@@ -61,6 +61,7 @@ export default function Footer() {
 
           <ButtonLink variant="custom"
             href="/dashboard/login"
+            loadingLabel="Abriendo acceso a comercios"
             className="cp-touch-action rounded-xl bg-white px-5 py-3 text-sm font-bold text-[#4d3800]"
           >
             Acceso comercios

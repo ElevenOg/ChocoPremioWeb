@@ -4,6 +4,7 @@ import type {
 } from "react";
 import Link from "next/link";
 import styles from "./Button.module.css";
+import LoadingLink from "./LoadingLink";
 
 type StyleProps = {
   variant?: "primary" | "secondary" | "light" | "whatsapp" | "custom";
@@ -77,7 +78,7 @@ export function Button({
 
 type ButtonLinkProps =
   Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> &
-  StyleProps & { href: string };
+  StyleProps & { href: string; loadingLabel?: string };
 
 export function ButtonLink({
   variant,
@@ -86,11 +87,17 @@ export function ButtonLink({
   className,
   target,
   rel,
+  loadingLabel,
+  children,
   ...props
 }: ButtonLinkProps) {
   const safeRel = [rel, target === "_blank" ? "noopener noreferrer" : ""]
     .filter(Boolean)
     .join(" ") || undefined;
+
+  if (loadingLabel) return <LoadingLink {...props} target={target} rel={safeRel}
+    loadingLabel={loadingLabel}
+    className={buttonClasses({ variant, size, shape, className })}>{children}</LoadingLink>;
 
   return (
     <Link
@@ -99,6 +106,8 @@ export function ButtonLink({
       target={target}
       rel={safeRel}
       className={buttonClasses({ variant, size, shape, className })}
-    />
+    >
+      {children}
+    </Link>
   );
 }
